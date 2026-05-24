@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShiftSmart — Gig Economy Income Optimizer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">S</div>
+      ShiftSmart
+      <a href="../index.html" class="back-link" style="margin-left:16px">&larr; back to CV</a>
+    </div>
+    <div class="tier">
+      <span id="tier-label">Free Preview</span>
+      <button id="tier-toggle" class="btn primary">Upgrade to Pro (Demo)</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="panel">
+      <h2>Driver Profile</h2>
+
+      <div class="control">
+        <label for="market">Market</label>
+        <select id="market"></select>
+      </div>
+
+      <div class="control">
+        <label>Platforms you can drive for</label>
+        <div id="platforms"></div>
+      </div>
+
+      <div class="control">
+        <label for="vehicle">Vehicle</label>
+        <select id="vehicle">
+          <option value="car">Gas car (26 MPG)</option>
+          <option value="hybrid">Hybrid (45 MPG)</option>
+          <option value="ev">EV (100 MPGe)</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="hours">Target hours per week: <span id="hours-val"></span></label>
+        <input id="hours" type="range" min="5" max="60" value="30" step="1">
+      </div>
+
+      <h2 style="margin-top:24px">Live Conditions</h2>
+
+      <div class="control">
+        <label for="weather">Weather</label>
+        <select id="weather">
+          <option value="clear">Clear</option>
+          <option value="cloudy">Cloudy</option>
+          <option value="rain">Rain</option>
+          <option value="storm">Storm</option>
+          <option value="snow">Snow</option>
+          <option value="hot">Heatwave</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="event">Local event</label>
+        <select id="event">
+          <option value="none">None</option>
+          <option value="concert">Concert</option>
+          <option value="sports">Sports game</option>
+          <option value="convention">Convention</option>
+          <option value="holiday">Holiday</option>
+        </select>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="panel" id="now-panel">
+        <h2>Right Now</h2>
+        <div id="now-card"></div>
+      </section>
+
+      <section class="kpis">
+        <div class="kpi"><div class="label">Weekly Hours</div><div class="val" id="summary-hours">0h</div></div>
+        <div class="kpi hi"><div class="label">Weekly Net</div><div class="val" id="summary-net">$0</div></div>
+        <div class="kpi"><div class="label">Weekly Gross</div><div class="val" id="summary-gross">$0</div></div>
+        <div class="kpi"><div class="label">Avg / hour</div><div class="val" id="summary-avg">$0/hr</div></div>
+        <div class="kpi"><div class="label">Projected Annual</div><div class="val" id="summary-annual">$0</div></div>
+      </section>
+
+      <section class="panel">
+        <h2>Weekly Opportunity Heatmap</h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">
+          Each cell is the best platform to run that hour, color-coded. Intensity = expected net hourly earnings.
+        </p>
+        <div style="overflow-x:auto">
+          <table id="heatmap"></table>
+        </div>
+      </section>
+
+      <section class="grid-2">
+        <div class="panel locked-container">
+          <h2>Your Optimized Schedule</h2>
+          <p class="muted" style="font-size:13px;margin:0 0 12px">
+            The most profitable hours, ranked and grouped into shifts.
+          </p>
+          <div id="schedule"></div>
+          <div class="pro-lock">
+            <div class="lock-icon">🔒</div>
+            <h4>Full schedule is a Pro feature</h4>
+            <p>Pro subscribers get a personalized weekly schedule, exportable to calendar, plus daily push alerts when surge windows open.</p>
+            <button class="btn primary" onclick="document.getElementById('tier-toggle').click()">Try Pro (Demo)</button>
+          </div>
+        </div>
+
+        <div class="panel locked-container">
+          <h2>Top Hot Zones</h2>
+          <p class="muted" style="font-size:13px;margin:0 0 12px" id="zones-context"></p>
+          <ul id="zones"></ul>
+          <div class="pro-lock">
+            <div class="lock-icon">📍</div>
+            <h4>Hot-zone targeting is Pro</h4>
+            <p>See ranked neighborhoods with live demand scores so you reposition before the surge, not after.</p>
+            <button class="btn primary" onclick="document.getElementById('tier-toggle').click()">Try Pro (Demo)</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="disclaimer">
+    <strong>About this prototype.</strong>
+    ShiftSmart's recommendations come from a transparent earnings model: published platform pay structures, hour-of-week demand curves
+    from rideshare/delivery research, plus weather and event modifiers. Major gig platforms (Uber, DoorDash, Lyft, Instacart, etc.) do
+    not expose public APIs for live earnings or zone demand, so this prototype simulates those inputs rather than scraping carrier accounts.
+    A production deployment would layer in driver-reported earnings, opt-in trip telemetry, and licensed traffic/event feeds.
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
