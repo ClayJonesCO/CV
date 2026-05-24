@@ -1,6 +1,7 @@
 // Gig Economy Optimizer — recommendation engine and UI controller.
 
 const { PLATFORMS, MARKETS, WEATHER_MODIFIERS, EVENT_BOOSTS, DAYS, curveForDay } = window.GIG_DATA;
+const { vehicleMakes, vehicleModels, vehicleYears, lookupMPG } = window.VEHICLES;
 
 const TYPE_TO_CATEGORY = {
   "rideshare": "rideshare",
@@ -14,7 +15,13 @@ const state = {
   weather: "clear",
   event: "none",
   hoursPerWeek: 30,
-  vehicle: "car",
+  vehicleMake: "",
+  vehicleModel: "",
+  vehicleYear: null,
+  mpg: 26,
+  mpgAuto: false,
+  fuelPrice: MARKETS.nyc.fuelCost,
+  fuelPriceCustom: false,
   acceptanceRate: 0.85,
   selectedPlatforms: new Set(Object.keys(PLATFORMS)),
   tier: "free",
@@ -35,8 +42,8 @@ function estimateHourlyEarnings(platformId, dayIndex, hour) {
 
   // Fuel & vehicle cost estimate per hour of active work
   const milesPerHour = p.type === "rideshare" ? 22 : 18;
-  const mpg = state.vehicle === "ev" ? 100 : state.vehicle === "hybrid" ? 45 : 26;
-  const fuelCost = (milesPerHour / mpg) * market.fuelCost;
+  const mpg = state.mpg > 0 ? state.mpg : 26;
+  const fuelCost = (milesPerHour / mpg) * state.fuelPrice;
   const wearCost = milesPerHour * 0.09;
 
   const net = gross - fuelCost - wearCost;
@@ -318,9 +325,65 @@ function renderAll() {
   renderTier();
 }
 
+function populateVehicleMakes() {
+  const sel = document.getElementById("v-make");
+  sel.innerHTML = `<option value="">— select make —</option>`;
+  for (const make of vehicleMakes()) {
+    const opt = document.createElement("option");
+    opt.value = make; opt.textContent = make;
+    sel.appendChild(opt);
+  }
+}
+
+function populateVehicleModels(make) {
+  const sel = document.getElementById("v-model");
+  sel.innerHTML = `<option value="">— select model —</option>`;
+  for (const model of vehicleModels(make)) {
+    const opt = document.createElement("option");
+    opt.value = model; opt.textContent = model;
+    sel.appendChild(opt);
+  }
+  sel.disabled = !make;
+}
+
+function populateVehicleYears(make, model) {
+  const sel = document.getElementById("v-year");
+  sel.innerHTML = `<option value="">— year —</option>`;
+  for (const year of vehicleYears(make, model)) {
+    const opt = document.createElement("option");
+    opt.value = year; opt.textContent = year;
+    sel.appendChild(opt);
+  }
+  sel.disabled = !(make && model);
+}
+
+function updateMPGFromLookup() {
+  const { vehicleMake, vehicleModel, vehicleYear } = state;
+  const mpgInput = document.getElementById("v-mpg");
+  const src = document.getElementById("v-mpg-source");
+  if (vehicleMake && vehicleModel && vehicleYear) {
+    const mpg = lookupMPG(vehicleMake, vehicleModel, vehicleYear);
+    if (mpg != null) {
+      state.mpg = mpg; state.mpgAuto = true;
+      mpgInput.value = mpg;
+      src.textContent = "EPA";
+      src.className = "hint auto";
+      return;
+    }
+  }
+  state.mpgAuto = false;
+  src.textContent = "manual";
+  src.className = "hint";
+}
+
 function wireControls() {
   document.getElementById("market").addEventListener("change", e => {
-    state.market = e.target.value; renderAll();
+    state.market = e.target.value;
+    if (!state.fuelPriceCustom) {
+      state.fuelPrice = MARKETS[state.market].fuelCost;
+      document.getElementById("v-fuel").value = state.fuelPrice.toFixed(2);
+    }
+    renderAll();
   });
   document.getElementById("weather").addEventListener("change", e => {
     state.weather = e.target.value; renderAll();
@@ -333,9 +396,53 @@ function wireControls() {
     document.getElementById("hours-val").textContent = state.hoursPerWeek + " hrs/week";
     renderAll();
   });
-  document.getElementById("vehicle").addEventListener("change", e => {
-    state.vehicle = e.target.value; renderAll();
+
+  document.getElementById("v-make").addEventListener("change", e => {
+    state.vehicleMake = e.target.value;
+    state.vehicleModel = ""; state.vehicleYear = null;
+    populateVehicleModels(state.vehicleMake);
+    populateVehicleYears(state.vehicleMake, state.vehicleModel);
+    updateMPGFromLookup();
+    renderAll();
   });
+  document.getElementById("v-model").addEventListener("change", e => {
+    state.vehicleModel = e.target.value;
+    state.vehicleYear = null;
+    populateVehicleYears(state.vehicleMake, state.vehicleModel);
+    updateMPGFromLookup();
+    renderAll();
+  });
+  document.getElementById("v-year").addEventListener("change", e => {
+    state.vehicleYear = e.target.value ? parseInt(e.target.value, 10) : null;
+    updateMPGFromLookup();
+    renderAll();
+  });
+  document.getElementById("v-mpg").addEventListener("input", e => {
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v) && v > 0) {
+      state.mpg = v;
+      state.mpgAuto = false;
+      const src = document.getElementById("v-mpg-source");
+      src.textContent = "manual"; src.className = "hint";
+      renderAll();
+    }
+  });
+
+  document.getElementById("v-fuel").addEventListener("input", e => {
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v) && v > 0) {
+      state.fuelPrice = v;
+      state.fuelPriceCustom = true;
+      renderAll();
+    }
+  });
+  document.getElementById("v-fuel-reset").addEventListener("click", () => {
+    state.fuelPrice = MARKETS[state.market].fuelCost;
+    state.fuelPriceCustom = false;
+    document.getElementById("v-fuel").value = state.fuelPrice.toFixed(2);
+    renderAll();
+  });
+
   document.getElementById("tier-toggle").addEventListener("click", () => {
     state.tier = state.tier === "pro" ? "free" : "pro"; renderAll();
   });
@@ -344,6 +451,11 @@ function wireControls() {
 document.addEventListener("DOMContentLoaded", () => {
   renderMarketOptions();
   renderPlatformChoices();
+  populateVehicleMakes();
+  populateVehicleModels("");
+  populateVehicleYears("", "");
+  document.getElementById("v-fuel").value = state.fuelPrice.toFixed(2);
+  document.getElementById("v-mpg").value = state.mpg;
   wireControls();
   document.getElementById("hours-val").textContent = state.hoursPerWeek + " hrs/week";
   renderAll();

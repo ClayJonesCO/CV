@@ -84,13 +84,41 @@ body.pro .tier #tier-label {
   display: block; font-size: 12px; color: var(--muted);
   margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em;
 }
-.control select, .control input[type=range] {
+.control select, .control input[type=range], .control input[type=number] {
   width: 100%; background: var(--panel-2); color: var(--text);
   border: 1px solid var(--border); padding: 8px 10px;
   border-radius: 8px; font-size: 14px;
+  font-family: inherit;
 }
+.control select:disabled { opacity: 0.5; cursor: not-allowed; }
 .control input[type=range] { padding: 0; }
 .control .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+.vehicle-grid {
+  display: grid; grid-template-columns: 1fr 1fr 80px; gap: 6px;
+}
+.mpg-row {
+  display: grid; grid-template-columns: 1fr 80px auto; gap: 8px;
+  align-items: center; margin-top: 8px;
+}
+.mpg-label { font-size: 13px; color: var(--text); }
+.mpg-row input { text-align: right; }
+#v-mpg-source { font-size: 11px; }
+#v-mpg-source.auto { color: var(--accent); }
+
+.fuel-row {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 4px;
+  align-items: center;
+}
+.fuel-prefix {
+  color: var(--muted); font-size: 14px; padding-left: 4px;
+}
+.btn-sm {
+  background: var(--panel-2); color: var(--muted);
+  border: 1px solid var(--border); padding: 6px 10px;
+  border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.btn-sm:hover { color: var(--text); border-color: var(--accent); }
 
 #platforms {
   display: flex; flex-wrap: wrap; gap: 6px;

@@ -34,12 +34,28 @@
       </div>
 
       <div class="control">
-        <label for="vehicle">Vehicle</label>
-        <select id="vehicle">
-          <option value="car">Gas car (26 MPG)</option>
-          <option value="hybrid">Hybrid (45 MPG)</option>
-          <option value="ev">EV (100 MPGe)</option>
-        </select>
+        <label>Vehicle</label>
+        <div class="vehicle-grid">
+          <select id="v-make" aria-label="Make"></select>
+          <select id="v-model" aria-label="Model" disabled></select>
+          <select id="v-year" aria-label="Year" disabled></select>
+        </div>
+        <div class="mpg-row">
+          <span class="mpg-label">Estimated MPG</span>
+          <input id="v-mpg" type="number" min="5" max="150" step="1" value="26">
+          <span id="v-mpg-source" class="hint">manual</span>
+        </div>
+        <div class="hint">EPA combined rating. Override the value if your real-world MPG differs.</div>
+      </div>
+
+      <div class="control">
+        <label for="v-fuel">Last fuel price ($/gal)</label>
+        <div class="fuel-row">
+          <span class="fuel-prefix">$</span>
+          <input id="v-fuel" type="number" min="0.50" max="15" step="0.01" value="3.50">
+          <button id="v-fuel-reset" class="btn-sm" type="button" title="Use market average">↻</button>
+        </div>
+        <div class="hint">Used directly in the per-hour fuel cost calculation.</div>
       </div>
 
       <div class="control">
@@ -136,6 +152,7 @@
   </footer>
 
   <script src="data.js"></script>
+  <script src="vehicles.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
