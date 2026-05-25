@@ -1,14 +1,18 @@
 openapi: 3.1.0
 info:
   title: Peakr API
-  version: 0.1.0-sketch
+  version: 0.1.0
   description: >
-    Design-sketch contract for the Peakr backend. Public endpoints serve the
-    anonymized community model and proxied data; authenticated endpoints sync a
-    driver's own log/expenses and push subscription. Auth via a bearer device
-    token (anonymous) that can be upgraded to an email account.
+    Contract for the Peakr backend. Public endpoints serve the anonymized
+    community model and referrals; authenticated endpoints sync a driver's own
+    sessions/expenses and push subscription. Auth is an opaque bearer device
+    token from POST /auth/anon (Phase 3 adds email-account upgrade).
+
+    Deployment note: in the Phase-1 Supabase deployment these paths are served
+    by the `api` Edge Function WITHOUT the `/v1` prefix — i.e. `/v1/sessions`
+    here maps to `<base>/sessions`, where `<base>` is the server URL below.
 servers:
-  - url: https://api.peakr.app
+  - url: https://<PROJECT_REF>.functions.supabase.co/api
 
 components:
   securitySchemes:

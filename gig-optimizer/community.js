@@ -64,23 +64,34 @@ const REFERRALS = {
 
 const DEFAULT_PLATFORM = { samples: 0, mult: 1.0 };
 
+// Live model overrides fetched from the backend (when configured); these take
+// precedence over the seeded data so the real flywheel replaces the simulation.
+const overrides = {};
+function setMarketModel(market, model) {
+  if (model && model.byPlatform) overrides[market] = model;
+}
+function modelFor(market) {
+  return overrides[market] || COMMUNITY[market] || null;
+}
+
 function communityFor(market, platformId) {
-  const m = COMMUNITY[market];
+  const m = modelFor(market);
   if (!m || !m.byPlatform[platformId]) return { ...DEFAULT_PLATFORM };
   return { ...m.byPlatform[platformId] };
 }
 
 function communityDrivers(market) {
-  return COMMUNITY[market] ? COMMUNITY[market].drivers : 0;
+  const m = modelFor(market);
+  return m ? (m.drivers || 0) : 0;
 }
 
 function communityTotalSamples(market) {
-  const m = COMMUNITY[market];
+  const m = modelFor(market);
   if (!m) return 0;
   return Object.values(m.byPlatform).reduce((s, p) => s + p.samples, 0);
 }
 
 window.COMMUNITY = {
-  communityFor, communityDrivers, communityTotalSamples, REFERRALS,
+  communityFor, communityDrivers, communityTotalSamples, setMarketModel, REFERRALS,
 };
 })();

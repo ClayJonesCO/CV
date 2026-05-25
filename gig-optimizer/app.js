@@ -2,7 +2,8 @@
 
 const { PLATFORMS, MARKETS, WEATHER_MODIFIERS, EVENT_BOOSTS, DAYS, curveForDay } = window.GIG_DATA;
 const { vehicleMakes, vehicleModels, vehicleYears, lookupMPG } = window.VEHICLES;
-const { communityFor, communityDrivers, communityTotalSamples, REFERRALS } = window.COMMUNITY;
+const { communityFor, communityDrivers, communityTotalSamples, setMarketModel, REFERRALS } = window.COMMUNITY;
+const API = window.PEAKR_API;
 
 const TYPE_TO_CATEGORY = {
   "rideshare": "rideshare",
@@ -764,11 +765,13 @@ function dayOfWeekFromISO(iso) {
 function addLogEntry({ date, platform, startHour, hours, actualGross }) {
   const day = dayOfWeekFromISO(date);
   const predictedGross = predictGross(platform, day, startHour, hours);
-  state.earningsLog.push({
+  const entry = {
     id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
     date, platform, startHour, hours, actualGross, predictedGross,
-  });
+  };
+  state.earningsLog.push(entry);
   recomputeCalibration();
+  if (API && API.enabled()) API.postSession({ ...entry, market: state.market });   // feed the flywheel
 }
 
 function deleteLogEntry(id) {
@@ -1052,6 +1055,18 @@ function eventsForDates(marketId, dates) {
   return out;
 }
 
+// Pull the live community model from the backend (when configured) and let it
+// override the seeded data. No-op when the backend feature flag is off.
+async function syncMarketModel() {
+  if (!API || !API.enabled()) return;
+  const market = state.market;
+  const model = await API.fetchMarketModel(market);
+  if (model && market === state.market) {
+    setMarketModel(market, model);
+    renderAll();
+  }
+}
+
 async function loadForecast() {
   const marketId = state.market;
   let days;
@@ -1262,6 +1277,7 @@ function wireControls() {
     }
     state.forecast = [];
     loadForecast();
+    syncMarketModel();
     renderAll();
   });
   document.getElementById("weather").addEventListener("change", e => {
@@ -1378,6 +1394,7 @@ function wireControls() {
     const amount = parseFloat(document.getElementById("exp-amount").value);
     if (!date || !category || !(amount > 0)) return;
     addExpense({ date, category, amount });
+    if (API && API.enabled()) API.postExpense({ date, category, amount });
     document.getElementById("exp-amount").value = "";
     renderAll();
   });
@@ -1554,6 +1571,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("hours-val").textContent = state.hoursPerWeek + " hrs/week";
   renderAll();
   loadForecast();
+  syncMarketModel();
 });
 
 // Register the service worker so Peakr is installable and works offline.
