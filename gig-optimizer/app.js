@@ -218,6 +218,12 @@ function recommendZones(dayIndex, hour) {
 function fmt(n) {
   return "$" + n.toFixed(2);
 }
+
+// Small "?" tooltip for explaining jargon in plain language.
+function tip(text) {
+  const safe = text.replace(/"/g, "&quot;");
+  return `<span class="info" tabindex="0" role="note" aria-label="${safe}">?<span class="tip">${text}</span></span>`;
+}
 function hourLabel(h) {
   const period = h < 12 ? "AM" : "PM";
   const hh = h === 0 ? 12 : h > 12 ? h - 12 : h;
@@ -358,11 +364,11 @@ function renderBreakdown(gross, netCash, miles, hours) {
   const effHourly = hours > 0 ? takeHome / hours : 0;
 
   const rows = [
-    ["Gross earnings", gross, "pos"],
+    ["Gross earnings" + tip("Everything the apps paid you this week, before costs."), gross, "pos"],
     ["Fuel", -fuel, "neg"],
-    ["Vehicle wear & maintenance", -wear, "neg"],
-    ["Self-employment tax (15.3%)", -tax.seTax, "neg"],
-    [`Income tax (${Math.round(state.incomeTaxRate * 100)}%)`, -tax.incomeTax, "neg"],
+    ["Vehicle wear &amp; maintenance" + tip("Tires, oil, brakes, depreciation — about $0.09 per mile driven."), -wear, "neg"],
+    ["Self-employment tax (15.3%)" + tip("Social Security + Medicare. Employees split this with an employer; as a contractor you pay both halves."), -tax.seTax, "neg"],
+    [`Income tax (${Math.round(state.incomeTaxRate * 100)}%)` + tip("Estimated federal income tax at the bracket you picked in the sidebar."), -tax.incomeTax, "neg"],
   ];
 
   const tbody = document.getElementById("breakdown-rows");
@@ -412,20 +418,29 @@ function renderNowRecommendation() {
   const best = bestPlatformAt(d, h);
   const card = document.getElementById("now-card");
   if (!best) {
-    card.innerHTML = `<p class="muted">Select at least one platform to see recommendations.</p>`;
+    card.innerHTML = `<p class="muted">Pick at least one app in the sidebar (under "Apps you can drive for") to get a recommendation.</p>`;
     return;
   }
   const p = PLATFORMS[best.id];
+  const zones = recommendZones(d, h);
+  const zone = zones.length ? zones[0] : null;
+  const dem = best.est.demand;
+  let rating, ratingCls;
+  if (dem >= 1.6) { rating = "Busy right now — great time to drive"; ratingCls = "busy"; }
+  else if (dem >= 1.0) { rating = "Steady demand right now"; ratingCls = "steady"; }
+  else { rating = "Slow right now — you may wait between jobs"; ratingCls = "slow"; }
+
   card.innerHTML = `
-    <div class="now-platform" style="--c:${p.color}">
-      <div class="now-badge" style="background:${p.color}">${p.name[0]}</div>
-      <div>
-        <div class="now-title">Run ${p.name} right now</div>
-        <div class="now-sub muted">${DAYS[d]} ${hourLabel(h)} · demand ${best.est.demand.toFixed(2)}× · surge ${best.est.surge.toFixed(2)}×</div>
+    <div class="hero" style="--c:${p.color}">
+      <div class="hero-badge" style="background:${p.color}">${p.name[0]}</div>
+      <div class="hero-main">
+        <div class="hero-line">It's ${DAYS[d]} ${hourLabel(h)}. Your best move is to drive
+          <strong style="color:${p.color}">${p.name}</strong>${zone ? ` around <strong>${zone.name}</strong>` : ""}.</div>
+        <div class="hero-rating ${ratingCls}">${rating}</div>
       </div>
-      <div class="now-earn">
-        <div class="big">${fmt(best.est.net)}<span class="muted">/hr net</span></div>
-        <div class="muted">gross ${fmt(best.est.gross)}/hr</div>
+      <div class="hero-earn">
+        <div class="hero-num">${fmt(best.est.net)}<span class="muted">/hr</span></div>
+        <div class="muted">take-home after gas &amp; car costs (before taxes)</div>
       </div>
     </div>
   `;
@@ -522,6 +537,7 @@ function renderPlanStatus(hoursPlanned, goalReached) {
 // ---------------- Persistence ----------------
 
 const STORAGE_KEY = "shiftsmart.v1";
+const INTRO_KEY = "shiftsmart.introDismissed";
 
 function serializeState() {
   return {
@@ -1163,6 +1179,11 @@ function wireControls() {
     setTimeout(() => { btn.textContent = original; }, 1800);
   });
 
+  document.getElementById("intro-dismiss").addEventListener("click", () => {
+    document.getElementById("intro").style.display = "none";
+    try { localStorage.setItem(INTRO_KEY, "1"); } catch (e) { /* ignore */ }
+  });
+
   document.getElementById("tier-toggle").addEventListener("click", () => {
     state.tier = state.tier === "pro" ? "free" : "pro"; renderAll();
   });
@@ -1232,6 +1253,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("v-mpg").value = state.mpg;
   applyStateToControls();
   wireControls();
+  try {
+    if (localStorage.getItem(INTRO_KEY) === "1") document.getElementById("intro").style.display = "none";
+  } catch (e) { /* ignore */ }
   document.getElementById("hours-val").textContent = state.hoursPerWeek + " hrs/week";
   renderAll();
   loadForecast();

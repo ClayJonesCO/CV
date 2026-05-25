@@ -20,9 +20,21 @@
     </div>
   </header>
 
+  <div id="intro" class="intro">
+    <div class="steps">
+      <div class="step"><span class="num">1</span><span><b>Set up once</b> <span class="muted">— your city, car & apps (we remember it)</span></span></div>
+      <span class="arrow">→</span>
+      <div class="step"><span class="num">2</span><span><b>See your plan</b> <span class="muted">— when, where & which app to drive</span></span></div>
+      <span class="arrow">→</span>
+      <div class="step"><span class="num">3</span><span><b>Log what you earn</b> <span class="muted">— the plan sharpens to your real pay</span></span></div>
+    </div>
+    <button id="intro-dismiss" class="intro-dismiss" type="button">Got it</button>
+  </div>
+
   <div class="layout">
     <aside class="panel">
       <h2>Driver Profile</h2>
+      <div class="sidebar-hint">Fill these in once. Everything on the right updates instantly as you change them.</div>
 
       <div class="control">
         <label for="market">Market</label>
@@ -30,7 +42,7 @@
       </div>
 
       <div class="control">
-        <label>Platforms you can drive for</label>
+        <label>Apps you can drive for</label>
         <div id="platforms"></div>
       </div>
 
@@ -119,7 +131,7 @@
 
     <main class="main">
       <section class="panel" id="now-panel">
-        <h2>Right Now</h2>
+        <h2>Your Best Move Right Now</h2>
         <div id="now-card"></div>
       </section>
 
@@ -132,31 +144,34 @@
       </section>
 
       <section class="panel">
-        <h2>Platform Comparison <span class="muted" id="compare-context" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+        <h2>All Your Apps, Ranked for This Hour <span class="muted" id="compare-context" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
         <table class="compare-table">
           <thead>
-            <tr><th>Platform</th><th></th><th class="num">Net/hr</th><th class="num">Gross/hr</th><th class="num">Demand</th></tr>
+            <tr><th>App</th><th></th><th class="num">Net/hr</th><th class="num">Gross/hr</th><th class="num">Demand<span class="info" tabindex="0" role="note" aria-label="How busy it is vs an average hour. 2x means twice the normal number of jobs/rides.">?<span class="tip">How busy it is vs. an average hour. 2× = twice the usual jobs.</span></span></th></tr>
           </thead>
           <tbody id="compare-rows"></tbody>
         </table>
       </section>
 
       <section class="kpis">
-        <div class="kpi"><div class="label">Weekly Hours</div><div class="val" id="summary-hours">0h</div></div>
-        <div class="kpi hi"><div class="label">Weekly Net</div><div class="val" id="summary-net">$0</div></div>
-        <div class="kpi"><div class="label">Weekly Gross</div><div class="val" id="summary-gross">$0</div></div>
-        <div class="kpi"><div class="label">Avg / hour</div><div class="val" id="summary-avg">$0/hr</div></div>
-        <div class="kpi"><div class="label">Projected Annual</div><div class="val" id="summary-annual">$0</div></div>
+        <div class="kpi"><div class="label">Weekly Hours</div><div class="val" id="summary-hours">0h</div><div class="sublabel">time behind the wheel</div></div>
+        <div class="kpi hi"><div class="label">Weekly Net<span class="info" tabindex="0" role="note" aria-label="What platforms pay you, minus gas and car wear. Before taxes.">?<span class="tip">What the apps pay you, minus gas &amp; car wear — before taxes.</span></span></div><div class="val" id="summary-net">$0</div><div class="sublabel">after gas &amp; car costs</div></div>
+        <div class="kpi"><div class="label">Weekly Gross<span class="info" tabindex="0" role="note" aria-label="Total the apps pay you, before any costs.">?<span class="tip">Total the apps pay you, before any costs are taken out.</span></span></div><div class="val" id="summary-gross">$0</div><div class="sublabel">before any costs</div></div>
+        <div class="kpi"><div class="label">Avg / hour</div><div class="val" id="summary-avg">$0/hr</div><div class="sublabel">net pay per hour worked</div></div>
+        <div class="kpi"><div class="label">Projected Annual</div><div class="val" id="summary-annual">$0</div><div class="sublabel">if you drove this every week</div></div>
       </section>
 
       <section class="panel">
-        <h2>Profit &amp; Tax Breakdown <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· per week, 1099 contractor</span></h2>
+        <h2>What You Actually Keep <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· per week, after costs &amp; taxes</span></h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">
+          Gig drivers are self-employed, so you cover your own gas, car wear, and taxes. Here's the real money left over.
+        </p>
         <div class="breakdown">
           <table class="breakdown-table">
             <tbody id="breakdown-rows"></tbody>
           </table>
           <div class="takehome">
-            <div class="th-label">Weekly take-home</div>
+            <div class="th-label">Weekly take-home<span class="info" tabindex="0" role="note" aria-label="The money left in your pocket after gas, car wear, and estimated taxes.">?<span class="tip">The money truly left in your pocket after gas, car wear &amp; estimated taxes.</span></span></div>
             <div class="th-val" id="breakdown-takehome">$0</div>
             <div class="muted" id="breakdown-effhourly">$0/hr take-home</div>
             <div class="muted" id="breakdown-takehome-annual">$0 / yr</div>
@@ -169,9 +184,9 @@
       </section>
 
       <section class="panel">
-        <h2>Weekly Opportunity Heatmap</h2>
+        <h2>When to Drive This Week</h2>
         <p class="muted" style="font-size:13px;margin:0 0 12px">
-          Each cell is the best platform to run that hour, color-coded. Intensity = expected net hourly earnings.
+          Every hour of the week, color-coded by the best app to run. Brighter = more money. Hover any square for details.
         </p>
         <div style="overflow-x:auto">
           <table id="heatmap"></table>
