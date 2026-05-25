@@ -5,7 +5,10 @@
 // to drivers). Inputs: hour-of-week demand curves derived from public
 // research on rideshare/delivery patterns, regional cost-per-mile baselines,
 // platform commission structures, weather, and local events.
-
+//
+// Wrapped in an IIFE so these top-level consts don't collide with the
+// shared global lexical scope used by the other classic scripts.
+(function () {
 const PLATFORMS = {
   uber: {
     name: "Uber",
@@ -257,3 +260,4 @@ function curveForDay(platform, dayIndex) {
 window.GIG_DATA = {
   PLATFORMS, MARKETS, WEATHER_MODIFIERS, EVENT_BOOSTS, DAYS, curveForDay,
 };
+})();

@@ -59,6 +59,18 @@
       </div>
 
       <div class="control">
+        <label for="tax-rate">Est. federal income tax bracket</label>
+        <select id="tax-rate">
+          <option value="0">0% — below filing threshold</option>
+          <option value="0.10">10%</option>
+          <option value="0.12" selected>12%</option>
+          <option value="0.22">22%</option>
+          <option value="0.24">24%</option>
+        </select>
+        <div class="hint">Drives the after-tax take-home estimate. Not tax advice.</div>
+      </div>
+
+      <div class="control">
         <label for="hours">Target hours per week: <span id="hours-val"></span></label>
         <input id="hours" type="range" min="5" max="60" value="30" step="1">
       </div>
@@ -104,6 +116,25 @@
       </section>
 
       <section class="panel">
+        <h2>Profit &amp; Tax Breakdown <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· per week, 1099 contractor</span></h2>
+        <div class="breakdown">
+          <table class="breakdown-table">
+            <tbody id="breakdown-rows"></tbody>
+          </table>
+          <div class="takehome">
+            <div class="th-label">Weekly take-home</div>
+            <div class="th-val" id="breakdown-takehome">$0</div>
+            <div class="muted" id="breakdown-effhourly">$0/hr take-home</div>
+            <div class="muted" id="breakdown-takehome-annual">$0 / yr</div>
+            <div class="th-meta">
+              <span id="breakdown-miles">0 mi/wk</span>
+              <span class="muted" id="breakdown-deduction">$0 mileage deduction</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
         <h2>Weekly Opportunity Heatmap</h2>
         <p class="muted" style="font-size:13px;margin:0 0 12px">
           Each cell is the best platform to run that hour, color-coded. Intensity = expected net hourly earnings.
@@ -115,7 +146,13 @@
 
       <section class="grid-2">
         <div class="panel locked-container">
-          <h2>Your Optimized Schedule</h2>
+          <div class="panel-head">
+            <h2>Your Optimized Schedule</h2>
+            <div class="export-btns">
+              <button id="export-csv" class="btn-sm" type="button" title="Download as CSV">CSV</button>
+              <button id="export-ics" class="btn-sm" type="button" title="Add to calendar">Calendar</button>
+            </div>
+          </div>
           <p class="muted" style="font-size:13px;margin:0 0 12px">
             The most profitable hours, ranked and grouped into shifts.
           </p>

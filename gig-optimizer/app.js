@@ -10,6 +10,12 @@ const TYPE_TO_CATEGORY = {
   "package": "delivery",
 };
 
+// Tax model constants (U.S. 1099 independent contractor).
+const IRS_MILEAGE_RATE = 0.70;   // 2025 standard business mileage deduction ($/mi)
+const SE_TAX_RATE = 0.153;       // Social Security + Medicare
+const SE_TAXABLE_PORTION = 0.9235;
+const VEHICLE_WEAR_RATE = 0.09;  // non-fuel operating cost proxy ($/mi)
+
 const state = {
   market: "nyc",
   weather: "clear",
@@ -22,10 +28,15 @@ const state = {
   mpgAuto: false,
   fuelPrice: MARKETS.nyc.fuelCost,
   fuelPriceCustom: false,
+  incomeTaxRate: 0.12,
   acceptanceRate: 0.85,
   selectedPlatforms: new Set(Object.keys(PLATFORMS)),
   tier: "free",
 };
+
+function milesPerHourFor(platformId) {
+  return PLATFORMS[platformId].type === "rideshare" ? 22 : 18;
+}
 
 function estimateHourlyEarnings(platformId, dayIndex, hour) {
   const p = PLATFORMS[platformId];
@@ -41,18 +52,31 @@ function estimateHourlyEarnings(platformId, dayIndex, hour) {
   const gross = base * surge * weatherMod * eventMod;
 
   // Fuel & vehicle cost estimate per hour of active work
-  const milesPerHour = p.type === "rideshare" ? 22 : 18;
+  const milesPerHour = milesPerHourFor(platformId);
   const mpg = state.mpg > 0 ? state.mpg : 26;
   const fuelCost = (milesPerHour / mpg) * state.fuelPrice;
-  const wearCost = milesPerHour * 0.09;
+  const wearCost = milesPerHour * VEHICLE_WEAR_RATE;
 
   const net = gross - fuelCost - wearCost;
   return {
     gross: Math.max(0, gross),
     net: Math.max(0, net),
+    miles: milesPerHour,
+    fuelCost,
+    wearCost,
     surge,
     demand,
   };
+}
+
+// Compute take-home after estimated self-employment + income tax.
+// Mileage deduction (IRS standard rate) reduces taxable income.
+function computeTaxes(gross, miles) {
+  const mileageDeduction = miles * IRS_MILEAGE_RATE;
+  const taxable = Math.max(0, gross - mileageDeduction);
+  const seTax = taxable * SE_TAXABLE_PORTION * SE_TAX_RATE;
+  const incomeTax = taxable * state.incomeTaxRate;
+  return { mileageDeduction, taxable, seTax, incomeTax, totalTax: seTax + incomeTax };
 }
 
 function bestPlatformAt(dayIndex, hour) {
@@ -98,6 +122,7 @@ function groupShifts(chosen) {
       cur.endHour = s.h + 1;
       cur.totalNet += s.est.net;
       cur.totalGross += s.est.gross;
+      cur.totalMiles += s.est.miles;
       cur.hours += 1;
     } else {
       if (cur) shifts.push(cur);
@@ -105,6 +130,7 @@ function groupShifts(chosen) {
         d: s.d, startHour: s.h, endHour: s.h + 1,
         id: s.id, hours: 1,
         totalNet: s.est.net, totalGross: s.est.gross,
+        totalMiles: s.est.miles,
       };
     }
   }
@@ -214,7 +240,7 @@ function renderHeatmap(grid) {
 function renderSchedule(shifts) {
   const list = document.getElementById("schedule");
   list.innerHTML = "";
-  let weeklyNet = 0, weeklyGross = 0, weeklyHours = 0;
+  let weeklyNet = 0, weeklyGross = 0, weeklyHours = 0, weeklyMiles = 0;
 
   const byDay = {};
   for (const s of shifts) {
@@ -222,6 +248,7 @@ function renderSchedule(shifts) {
     weeklyNet += s.totalNet;
     weeklyGross += s.totalGross;
     weeklyHours += s.hours;
+    weeklyMiles += s.totalMiles;
   }
 
   for (let d = 0; d < 7; d++) {
@@ -252,6 +279,40 @@ function renderSchedule(shifts) {
   const avg = weeklyHours > 0 ? weeklyNet / weeklyHours : 0;
   document.getElementById("summary-avg").textContent = fmt(avg) + "/hr";
   document.getElementById("summary-annual").textContent = fmt(weeklyNet * 50);
+
+  renderBreakdown(weeklyGross, weeklyNet, weeklyMiles, weeklyHours);
+}
+
+function renderBreakdown(gross, netCash, miles, hours) {
+  const fuel = state.mpg > 0
+    ? (miles / state.mpg) * state.fuelPrice : 0;
+  const wear = miles * VEHICLE_WEAR_RATE;
+  const tax = computeTaxes(gross, miles);
+  const takeHome = netCash - tax.totalTax;
+  const effHourly = hours > 0 ? takeHome / hours : 0;
+
+  const rows = [
+    ["Gross earnings", gross, "pos"],
+    ["Fuel", -fuel, "neg"],
+    ["Vehicle wear & maintenance", -wear, "neg"],
+    ["Self-employment tax (15.3%)", -tax.seTax, "neg"],
+    [`Income tax (${Math.round(state.incomeTaxRate * 100)}%)`, -tax.incomeTax, "neg"],
+  ];
+
+  const tbody = document.getElementById("breakdown-rows");
+  tbody.innerHTML = "";
+  for (const [label, val, cls] of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${label}</td><td class="num ${cls}">${val < 0 ? "−" : ""}${fmt(Math.abs(val))}</td>`;
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById("breakdown-takehome").textContent = fmt(takeHome);
+  document.getElementById("breakdown-takehome-annual").textContent = fmt(takeHome * 50) + " / yr";
+  document.getElementById("breakdown-effhourly").textContent = fmt(effHourly) + "/hr take-home";
+  document.getElementById("breakdown-miles").textContent = `${Math.round(miles)} mi/wk`;
+  document.getElementById("breakdown-deduction").textContent =
+    `${fmt(tax.mileageDeduction)} mileage deduction (${miles ? Math.round(miles) : 0} mi × $${IRS_MILEAGE_RATE.toFixed(2)})`;
 }
 
 function renderZones() {
@@ -314,15 +375,126 @@ function renderTier() {
   document.getElementById("tier-toggle").textContent = isPro ? "Switch to Free" : "Upgrade to Pro (Demo)";
 }
 
+let currentShifts = [];
+
 function renderAll() {
   const grid = buildWeeklyHeatmap();
   const chosen = recommendSchedule(grid, state.hoursPerWeek);
   const shifts = groupShifts(chosen);
+  currentShifts = shifts;
   renderHeatmap(grid);
   renderSchedule(shifts);
   renderZones();
   renderNowRecommendation();
   renderTier();
+  saveState();
+}
+
+// ---------------- Persistence ----------------
+
+const STORAGE_KEY = "shiftsmart.v1";
+
+function saveState() {
+  try {
+    const snapshot = {
+      market: state.market,
+      weather: state.weather,
+      event: state.event,
+      hoursPerWeek: state.hoursPerWeek,
+      vehicleMake: state.vehicleMake,
+      vehicleModel: state.vehicleModel,
+      vehicleYear: state.vehicleYear,
+      mpg: state.mpg,
+      mpgAuto: state.mpgAuto,
+      fuelPrice: state.fuelPrice,
+      fuelPriceCustom: state.fuelPriceCustom,
+      incomeTaxRate: state.incomeTaxRate,
+      selectedPlatforms: [...state.selectedPlatforms],
+      tier: state.tier,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  } catch (e) { /* storage unavailable; ignore */ }
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (s.market && MARKETS[s.market]) state.market = s.market;
+    if (s.weather) state.weather = s.weather;
+    if (s.event) state.event = s.event;
+    if (typeof s.hoursPerWeek === "number") state.hoursPerWeek = s.hoursPerWeek;
+    if (typeof s.vehicleMake === "string") state.vehicleMake = s.vehicleMake;
+    if (typeof s.vehicleModel === "string") state.vehicleModel = s.vehicleModel;
+    if (s.vehicleYear) state.vehicleYear = s.vehicleYear;
+    if (typeof s.mpg === "number") state.mpg = s.mpg;
+    if (typeof s.mpgAuto === "boolean") state.mpgAuto = s.mpgAuto;
+    if (typeof s.fuelPrice === "number") state.fuelPrice = s.fuelPrice;
+    if (typeof s.fuelPriceCustom === "boolean") state.fuelPriceCustom = s.fuelPriceCustom;
+    if (typeof s.incomeTaxRate === "number") state.incomeTaxRate = s.incomeTaxRate;
+    if (Array.isArray(s.selectedPlatforms) && s.selectedPlatforms.length) {
+      state.selectedPlatforms = new Set(s.selectedPlatforms.filter(id => PLATFORMS[id]));
+    }
+    if (s.tier) state.tier = s.tier;
+  } catch (e) { /* corrupt snapshot; ignore */ }
+}
+
+// ---------------- Export ----------------
+
+function nextDateForDay(dayIndex) {
+  const now = new Date();
+  const diff = (dayIndex - now.getDay() + 7) % 7;
+  const d = new Date(now);
+  d.setDate(now.getDate() + diff);
+  return d;
+}
+
+function exportCSV() {
+  const lines = ["Day,Start,End,Platform,Hours,Est Net,Miles"];
+  for (const s of currentShifts) {
+    lines.push([
+      DAYS[s.d],
+      hourLabel(s.startHour),
+      hourLabel(s.endHour % 24),
+      PLATFORMS[s.id].name,
+      s.hours,
+      s.totalNet.toFixed(2),
+      Math.round(s.totalMiles),
+    ].join(","));
+  }
+  downloadFile("shiftsmart-schedule.csv", "text/csv", lines.join("\n"));
+}
+
+function exportICS() {
+  const pad = n => String(n).padStart(2, "0");
+  const stamp = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}0000`;
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ShiftSmart//Gig Optimizer//EN"];
+  for (const s of currentShifts) {
+    const base = nextDateForDay(s.d);
+    const start = new Date(base); start.setHours(s.startHour, 0, 0, 0);
+    const end = new Date(base); end.setHours(s.endHour, 0, 0, 0);
+    lines.push(
+      "BEGIN:VEVENT",
+      `DTSTART:${stamp(start)}`,
+      `DTEND:${stamp(end)}`,
+      `SUMMARY:Drive ${PLATFORMS[s.id].name} (est. ${fmt(s.totalNet)})`,
+      `DESCRIPTION:ShiftSmart recommended shift — ~${fmt(s.totalNet / s.hours)}/hr net over ${Math.round(s.totalMiles)} mi`,
+      "END:VEVENT",
+    );
+  }
+  lines.push("END:VCALENDAR");
+  downloadFile("shiftsmart-schedule.ics", "text/calendar", lines.join("\r\n"));
+}
+
+function downloadFile(name, mime, content) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function populateVehicleMakes() {
@@ -443,12 +615,40 @@ function wireControls() {
     renderAll();
   });
 
+  document.getElementById("tax-rate").addEventListener("change", e => {
+    state.incomeTaxRate = parseFloat(e.target.value); renderAll();
+  });
+
+  document.getElementById("export-csv").addEventListener("click", exportCSV);
+  document.getElementById("export-ics").addEventListener("click", exportICS);
+
   document.getElementById("tier-toggle").addEventListener("click", () => {
     state.tier = state.tier === "pro" ? "free" : "pro"; renderAll();
   });
 }
 
+// Reflect restored state into the form controls and dependent dropdowns.
+function applyStateToControls() {
+  document.getElementById("market").value = state.market;
+  document.getElementById("weather").value = state.weather;
+  document.getElementById("event").value = state.event;
+  document.getElementById("hours").value = state.hoursPerWeek;
+  document.getElementById("tax-rate").value = String(state.incomeTaxRate);
+
+  document.getElementById("v-make").value = state.vehicleMake || "";
+  populateVehicleModels(state.vehicleMake);
+  document.getElementById("v-model").value = state.vehicleModel || "";
+  populateVehicleYears(state.vehicleMake, state.vehicleModel);
+  if (state.vehicleYear) document.getElementById("v-year").value = String(state.vehicleYear);
+  updateMPGFromLookup();
+  if (!state.mpgAuto) document.getElementById("v-mpg").value = state.mpg;
+
+  document.getElementById("v-fuel").value = state.fuelPrice.toFixed(2);
+  renderPlatformChoices();
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  loadState();
   renderMarketOptions();
   renderPlatformChoices();
   populateVehicleMakes();
@@ -456,6 +656,7 @@ document.addEventListener("DOMContentLoaded", () => {
   populateVehicleYears("", "");
   document.getElementById("v-fuel").value = state.fuelPrice.toFixed(2);
   document.getElementById("v-mpg").value = state.mpg;
+  applyStateToControls();
   wireControls();
   document.getElementById("hours-val").textContent = state.hoursPerWeek + " hrs/week";
   renderAll();

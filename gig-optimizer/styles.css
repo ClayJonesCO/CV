@@ -155,6 +155,32 @@ body.pro .tier #tier-label {
 .kpi .val { font-size: 22px; font-weight: 700; margin-top: 4px; }
 .kpi.hi .val { color: var(--accent); }
 
+.breakdown {
+  display: grid; grid-template-columns: 1fr 240px; gap: 20px; align-items: center;
+}
+@media (max-width: 700px) { .breakdown { grid-template-columns: 1fr; } }
+.breakdown-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.breakdown-table td { padding: 7px 0; border-bottom: 1px solid var(--border); }
+.breakdown-table tr:last-child td { border-bottom: none; }
+.breakdown-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.breakdown-table .num.pos { color: var(--text); font-weight: 600; }
+.breakdown-table .num.neg { color: #f87171; }
+.takehome {
+  background: linear-gradient(135deg, rgba(74,222,128,0.12), rgba(34,211,238,0.08));
+  border: 1px solid var(--accent); border-radius: 12px; padding: 16px; text-align: center;
+}
+.takehome .th-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+}
+.takehome .th-val { font-size: 30px; font-weight: 800; color: var(--accent); margin: 4px 0; }
+.takehome .th-meta {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 2px; font-size: 12px;
+}
+
+.panel-head { display: flex; justify-content: space-between; align-items: center; }
+.export-btns { display: flex; gap: 6px; }
+
 #now-card { padding: 16px; }
 .now-platform {
   display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center;

@@ -2,7 +2,10 @@
 // Source: fueleconomy.gov (EPA), most common gas trim per generation.
 // Format: model -> array of [startYear, endYear, mpg].
 // Hybrid and EV variants are listed as separate models; EV/PHEV values are MPGe.
-
+//
+// Wrapped in an IIFE so these top-level names stay out of the shared global
+// lexical scope used by the other classic scripts.
+(function () {
 const VEHICLE_DB = {
   "Acura": {
     "ILX":              [[2013, 2022, 28]],
@@ -301,3 +304,4 @@ function lookupMPG(make, model, year) {
 }
 
 window.VEHICLES = { VEHICLE_DB, vehicleMakes, vehicleModels, vehicleYears, lookupMPG };
+})();
