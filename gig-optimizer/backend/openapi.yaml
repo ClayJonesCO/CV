@@ -1,0 +1,140 @@
+openapi: 3.1.0
+info:
+  title: Peakr API
+  version: 0.1.0-sketch
+  description: >
+    Design-sketch contract for the Peakr backend. Public endpoints serve the
+    anonymized community model and proxied data; authenticated endpoints sync a
+    driver's own log/expenses and push subscription. Auth via a bearer device
+    token (anonymous) that can be upgraded to an email account.
+servers:
+  - url: https://api.peakr.app
+
+components:
+  securitySchemes:
+    deviceToken:
+      type: http
+      scheme: bearer
+  schemas:
+    Session:
+      type: object
+      required: [occurred_on, start_hour, hours, platform, market, gross]
+      properties:
+        occurred_on: { type: string, format: date }
+        start_hour:  { type: integer, minimum: 0, maximum: 23 }
+        hours:       { type: number, minimum: 0.25 }
+        platform:    { type: string, example: doordash }
+        market:      { type: string, example: nash }
+        geohash5:    { type: string, nullable: true }
+        gross:       { type: number, description: dollars }
+        miles:       { type: number, nullable: true }
+        predicted:   { type: number, nullable: true, description: model prediction at log time }
+        source:      { type: string, enum: [manual, paste, import], default: manual }
+    MarketModel:
+      type: object
+      properties:
+        market:  { type: string }
+        drivers: { type: integer, description: contributor count, for the confidence read }
+        byPlatform:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              samples: { type: integer }
+              mult:    { type: number, description: avg actual / avg predicted }
+          example: { uber: { samples: 5200, mult: 0.86 } }
+        cells:
+          type: array
+          description: optional granular per day-of-week/hour stats
+          items:
+            type: object
+            properties:
+              platform: { type: string }
+              dow:      { type: integer }
+              hour:     { type: integer }
+              n:        { type: integer }
+              avg_net:  { type: number }
+
+paths:
+  /v1/auth/anon:
+    post:
+      summary: Issue an anonymous device token
+      responses: { "200": { description: token issued } }
+  /v1/auth/email:
+    post:
+      summary: Send a magic link to upgrade an anon device to an account
+      responses: { "200": { description: link sent } }
+
+  /v1/sessions:
+    post:
+      summary: Ingest one or many logged sessions
+      security: [{ deviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/Session"
+                - { type: array, items: { $ref: "#/components/schemas/Session" } }
+      responses: { "201": { description: stored }, "401": { description: unauthorized } }
+    get:
+      summary: List the driver's sessions
+      security: [{ deviceToken: [] }]
+      responses: { "200": { description: ok } }
+
+  /v1/expenses:
+    post: { summary: Add an expense, security: [{ deviceToken: [] }], responses: { "201": { description: stored } } }
+    get:  { summary: List expenses, security: [{ deviceToken: [] }], responses: { "200": { description: ok } } }
+
+  /v1/market-model:
+    get:
+      summary: Community demand model + confidence for a market
+      parameters:
+        - { name: market, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketModel" }
+
+  /v1/forecast:
+    get:
+      summary: Cached 7-day weather for a market (Open-Meteo proxy)
+      parameters: [{ name: market, in: query, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+
+  /v1/events:
+    get:
+      summary: Upcoming local events for a market (cached external feed)
+      parameters: [{ name: market, in: query, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+
+  /v1/referrals:
+    get:
+      summary: Active sign-up bonuses + affiliate links for a market
+      parameters: [{ name: market, in: query, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+
+  /v1/push/subscribe:
+    post:
+      summary: Register a Web Push subscription + alert preferences
+      security: [{ deviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subscription, market]
+              properties:
+                subscription: { type: object, description: PushSubscription JSON }
+                market:       { type: string }
+                platforms:    { type: array, items: { type: string } }
+                home_geohash5:{ type: string }
+      responses: { "201": { description: subscribed } }
+    delete:
+      summary: Remove the push subscription
+      security: [{ deviceToken: [] }]
+      responses: { "204": { description: removed } }
