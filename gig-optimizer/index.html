@@ -71,8 +71,23 @@
       </div>
 
       <div class="control">
-        <label for="hours">Target hours per week: <span id="hours-val"></span></label>
-        <input id="hours" type="range" min="5" max="60" value="30" step="1">
+        <label>Plan by</label>
+        <div class="seg" id="plan-mode">
+          <button type="button" class="seg-btn active" data-mode="hours">Hours / week</button>
+          <button type="button" class="seg-btn" data-mode="goal">Income goal</button>
+        </div>
+        <div id="plan-hours" style="margin-top:10px">
+          <label for="hours" style="text-transform:none;letter-spacing:0;color:var(--text)">Target hours: <span id="hours-val"></span></label>
+          <input id="hours" type="range" min="5" max="60" value="30" step="1">
+        </div>
+        <div id="plan-goal" style="margin-top:10px;display:none">
+          <label for="income-goal" style="text-transform:none;letter-spacing:0;color:var(--text)">Weekly take-home target</label>
+          <div class="fuel-row">
+            <span class="fuel-prefix">$</span>
+            <input id="income-goal" type="number" min="50" max="10000" step="50" value="1000">
+          </div>
+          <div class="hint">Fewest hours needed to hit this after-tax income.</div>
+        </div>
       </div>
 
       <h2 style="margin-top:24px">Live Conditions</h2>
@@ -105,6 +120,16 @@
       <section class="panel" id="now-panel">
         <h2>Right Now</h2>
         <div id="now-card"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Platform Comparison <span class="muted" id="compare-context" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+        <table class="compare-table">
+          <thead>
+            <tr><th>Platform</th><th></th><th class="num">Net/hr</th><th class="num">Gross/hr</th><th class="num">Demand</th></tr>
+          </thead>
+          <tbody id="compare-rows"></tbody>
+        </table>
       </section>
 
       <section class="kpis">
@@ -153,9 +178,10 @@
               <button id="export-ics" class="btn-sm" type="button" title="Add to calendar">Calendar</button>
             </div>
           </div>
-          <p class="muted" style="font-size:13px;margin:0 0 12px">
+          <p class="muted" style="font-size:13px;margin:0 0 8px">
             The most profitable hours, ranked and grouped into shifts.
           </p>
+          <div id="plan-status" class="plan-status"></div>
           <div id="schedule"></div>
           <div class="pro-lock">
             <div class="lock-icon">🔒</div>

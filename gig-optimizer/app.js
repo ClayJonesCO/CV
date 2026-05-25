@@ -20,7 +20,9 @@ const state = {
   market: "nyc",
   weather: "clear",
   event: "none",
+  planMode: "hours",        // "hours" | "goal"
   hoursPerWeek: 30,
+  incomeGoal: 1000,         // weekly take-home target in goal mode
   vehicleMake: "",
   vehicleModel: "",
   vehicleYear: null,
@@ -32,6 +34,15 @@ const state = {
   acceptanceRate: 0.85,
   selectedPlatforms: new Set(Object.keys(PLATFORMS)),
   tier: "free",
+};
+
+// Which platform types can be run simultaneously ("stacked") to cut idle time.
+// Package work (Amazon Flex) is block-based and doesn't stack.
+const STACK_COMPAT = {
+  "rideshare": ["rideshare", "food-delivery"],
+  "food-delivery": ["food-delivery", "grocery"],
+  "grocery": ["grocery", "food-delivery"],
+  "package": [],
 };
 
 function milesPerHourFor(platformId) {
@@ -100,7 +111,7 @@ function buildWeeklyHeatmap() {
   return grid;
 }
 
-function recommendSchedule(grid, hoursTarget) {
+function buildSlots(grid) {
   const slots = [];
   for (let d = 0; d < 7; d++) {
     for (let h = 0; h < 24; h++) {
@@ -109,9 +120,51 @@ function recommendSchedule(grid, hoursTarget) {
     }
   }
   slots.sort((a, b) => b.est.net - a.est.net);
-  const chosen = slots.slice(0, hoursTarget);
-  chosen.sort((a, b) => a.d * 24 + a.h - (b.d * 24 + b.h));
-  return chosen;
+  return slots;
+}
+
+function selectByHours(slots, hoursTarget) {
+  return slots.slice(0, hoursTarget);
+}
+
+// Greedily add the most profitable hours until projected weekly take-home
+// (after fuel, wear, and taxes) reaches the goal. Returns chosen slots and
+// whether the goal was reachable within the week.
+function selectByGoal(slots, goal) {
+  let gross = 0, miles = 0, netCash = 0;
+  const chosen = [];
+  for (const s of slots) {
+    chosen.push(s);
+    gross += s.est.gross;
+    miles += s.est.miles;
+    netCash += s.est.net;
+    const tax = computeTaxes(gross, miles);
+    if (netCash - tax.totalTax >= goal) return { chosen, reached: true };
+  }
+  return { chosen, reached: false };
+}
+
+function byTime(a, b) {
+  return (a.d * 24 + a.h) - (b.d * 24 + b.h);
+}
+
+function stackSuggestions(primaryId, d, startHour, endHour) {
+  const compat = STACK_COMPAT[PLATFORMS[primaryId].type] || [];
+  const cands = [];
+  for (const id of state.selectedPlatforms) {
+    if (id === primaryId) continue;
+    if (!compat.includes(PLATFORMS[id].type)) continue;
+    let bestNet = 0, demandSum = 0, n = 0;
+    for (let h = startHour; h < endHour; h++) {
+      const est = estimateHourlyEarnings(id, d, h % 24);
+      bestNet = Math.max(bestNet, est.net);
+      demandSum += est.demand; n++;
+    }
+    const avgDemand = n ? demandSum / n : 0;
+    if (avgDemand >= 0.7) cands.push({ id, net: bestNet, demand: avgDemand });
+  }
+  cands.sort((a, b) => b.net - a.net);
+  return cands.slice(0, 2);
 }
 
 function groupShifts(chosen) {
@@ -260,12 +313,18 @@ function renderSchedule(shifts) {
     dayEl.innerHTML = `<h4>${DAYS[d]} <span class="muted">${dayHours}h · ${fmt(dayNet)}</span></h4>`;
     for (const s of byDay[d]) {
       const p = PLATFORMS[s.id];
+      const stack = stackSuggestions(s.id, s.d, s.startHour, s.endHour);
+      const stackHtml = stack.length
+        ? `<span class="stack" title="Run these apps at the same time to cut idle time">+ ${stack.map(c =>
+            `<span class="stack-chip"><span class="sdot" style="background:${PLATFORMS[c.id].color}"></span>${PLATFORMS[c.id].name}</span>`
+          ).join("")}</span>`
+        : "";
       const shift = document.createElement("div");
       shift.className = "shift";
       shift.innerHTML = `
         <span class="dot" style="background:${p.color}"></span>
         <span class="time">${rangeLabel(s.startHour, s.endHour)}</span>
-        <span class="plat">${p.name}</span>
+        <span class="plat">${p.name}${stackHtml}</span>
         <span class="earn">${fmt(s.totalNet)} <span class="muted">(${fmt(s.totalNet / s.hours)}/hr)</span></span>
       `;
       dayEl.appendChild(shift);
@@ -365,6 +424,36 @@ function renderNowRecommendation() {
   `;
 }
 
+function renderComparison() {
+  const now = new Date();
+  const d = now.getDay();
+  const h = now.getHours();
+  const rows = [...state.selectedPlatforms]
+    .map(id => ({ id, est: estimateHourlyEarnings(id, d, h) }))
+    .sort((a, b) => b.est.net - a.est.net);
+
+  const tbody = document.getElementById("compare-rows");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  const max = rows.length ? rows[0].est.net : 0;
+
+  for (const r of rows) {
+    const p = PLATFORMS[r.id];
+    const pct = max > 0 ? (r.est.net / max) * 100 : 0;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="cp-name"><span class="dot" style="background:${p.color}"></span>${p.name}</td>
+      <td class="cp-bar"><span style="width:${pct.toFixed(0)}%;background:${p.color}"></span></td>
+      <td class="num">${fmt(r.est.net)}</td>
+      <td class="num muted">${fmt(r.est.gross)}</td>
+      <td class="num muted">${r.est.surge.toFixed(2)}×</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  const ctx = document.getElementById("compare-context");
+  if (ctx) ctx.textContent = `${DAYS[d]} ${hourLabel(h)} · ${MARKETS[state.market].name} · net $/hr after fuel & wear`;
+}
+
 function renderTier() {
   const isPro = state.tier === "pro";
   document.body.classList.toggle("pro", isPro);
@@ -379,15 +468,45 @@ let currentShifts = [];
 
 function renderAll() {
   const grid = buildWeeklyHeatmap();
-  const chosen = recommendSchedule(grid, state.hoursPerWeek);
+  const slots = buildSlots(grid);
+
+  let chosen, goalReached = true;
+  if (state.planMode === "goal") {
+    const r = selectByGoal(slots, state.incomeGoal);
+    chosen = r.chosen;
+    goalReached = r.reached;
+  } else {
+    chosen = selectByHours(slots, state.hoursPerWeek);
+  }
+  chosen = chosen.slice().sort(byTime);
+
   const shifts = groupShifts(chosen);
   currentShifts = shifts;
   renderHeatmap(grid);
   renderSchedule(shifts);
+  renderPlanStatus(chosen.length, goalReached);
+  renderComparison();
   renderZones();
   renderNowRecommendation();
   renderTier();
   saveState();
+}
+
+function renderPlanStatus(hoursPlanned, goalReached) {
+  const el = document.getElementById("plan-status");
+  if (!el) return;
+  if (state.planMode === "goal") {
+    if (goalReached) {
+      el.className = "plan-status ok";
+      el.textContent = `Goal of ${fmt(state.incomeGoal)}/wk take-home is reachable in about ${hoursPlanned} hour${hoursPlanned === 1 ? "" : "s"} of driving.`;
+    } else {
+      el.className = "plan-status warn";
+      el.textContent = `Even driving every profitable hour this week, the schedule tops out below ${fmt(state.incomeGoal)}/wk take-home. Lower the goal, add platforms, or check fuel/MPG.`;
+    }
+  } else {
+    el.className = "plan-status";
+    el.textContent = `Showing the ${hoursPlanned} most profitable hours this week.`;
+  }
 }
 
 // ---------------- Persistence ----------------
@@ -400,7 +519,9 @@ function saveState() {
       market: state.market,
       weather: state.weather,
       event: state.event,
+      planMode: state.planMode,
       hoursPerWeek: state.hoursPerWeek,
+      incomeGoal: state.incomeGoal,
       vehicleMake: state.vehicleMake,
       vehicleModel: state.vehicleModel,
       vehicleYear: state.vehicleYear,
@@ -424,7 +545,9 @@ function loadState() {
     if (s.market && MARKETS[s.market]) state.market = s.market;
     if (s.weather) state.weather = s.weather;
     if (s.event) state.event = s.event;
+    if (s.planMode === "hours" || s.planMode === "goal") state.planMode = s.planMode;
     if (typeof s.hoursPerWeek === "number") state.hoursPerWeek = s.hoursPerWeek;
+    if (typeof s.incomeGoal === "number") state.incomeGoal = s.incomeGoal;
     if (typeof s.vehicleMake === "string") state.vehicleMake = s.vehicleMake;
     if (typeof s.vehicleModel === "string") state.vehicleModel = s.vehicleModel;
     if (s.vehicleYear) state.vehicleYear = s.vehicleYear;
@@ -568,6 +691,17 @@ function wireControls() {
     document.getElementById("hours-val").textContent = state.hoursPerWeek + " hrs/week";
     renderAll();
   });
+  document.getElementById("income-goal").addEventListener("input", e => {
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v) && v > 0) { state.incomeGoal = v; renderAll(); }
+  });
+  document.querySelectorAll("#plan-mode .seg-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.planMode = btn.dataset.mode;
+      applyPlanMode();
+      renderAll();
+    });
+  });
 
   document.getElementById("v-make").addEventListener("change", e => {
     state.vehicleMake = e.target.value;
@@ -627,13 +761,24 @@ function wireControls() {
   });
 }
 
+function applyPlanMode() {
+  const isGoal = state.planMode === "goal";
+  document.getElementById("plan-hours").style.display = isGoal ? "none" : "block";
+  document.getElementById("plan-goal").style.display = isGoal ? "block" : "none";
+  document.querySelectorAll("#plan-mode .seg-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.mode === state.planMode);
+  });
+}
+
 // Reflect restored state into the form controls and dependent dropdowns.
 function applyStateToControls() {
   document.getElementById("market").value = state.market;
   document.getElementById("weather").value = state.weather;
   document.getElementById("event").value = state.event;
   document.getElementById("hours").value = state.hoursPerWeek;
+  document.getElementById("income-goal").value = state.incomeGoal;
   document.getElementById("tax-rate").value = String(state.incomeTaxRate);
+  applyPlanMode();
 
   document.getElementById("v-make").value = state.vehicleMake || "";
   populateVehicleModels(state.vehicleMake);
