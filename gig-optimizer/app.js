@@ -2,6 +2,7 @@
 
 const { PLATFORMS, MARKETS, WEATHER_MODIFIERS, EVENT_BOOSTS, DAYS, curveForDay } = window.GIG_DATA;
 const { vehicleMakes, vehicleModels, vehicleYears, lookupMPG } = window.VEHICLES;
+const { communityFor, communityDrivers, communityTotalSamples, REFERRALS } = window.COMMUNITY;
 
 const TYPE_TO_CATEGORY = {
   "rideshare": "rideshare",
@@ -17,7 +18,7 @@ const SE_TAXABLE_PORTION = 0.9235;
 const VEHICLE_WEAR_RATE = 0.09;  // non-fuel operating cost proxy ($/mi)
 
 const state = {
-  market: "nyc",
+  market: "nash",
   weather: "clear",
   event: "none",
   planMode: "hours",        // "hours" | "goal"
@@ -28,16 +29,19 @@ const state = {
   vehicleYear: null,
   mpg: 26,
   mpgAuto: false,
-  fuelPrice: MARKETS.nyc.fuelCost,
+  fuelPrice: MARKETS.nash.fuelCost,
   fuelPriceCustom: false,
   incomeTaxRate: 0.12,
   acceptanceRate: 0.85,
-  selectedPlatforms: new Set(Object.keys(PLATFORMS)),
+  selectedPlatforms: new Set(["uber", "lyft", "doordash", "ubereats"]),
   earningsLog: [],          // [{ id, date, platform, startHour, hours, actualGross, predictedGross }]
+  expenses: [],             // [{ id, date, category, amount }]
   calibrationFactor: 1.0,   // derived: total actual / total predicted across the log
   forecast: [],             // 7-day outlook: [{ date, weatherKey, tempMax, tempMin, precip, event, live }]
   tier: "free",
 };
+
+const EXPENSE_CATEGORIES = ["Gas", "Maintenance", "Phone & data", "Supplies", "Tolls & parking", "Insurance", "Other"];
 
 // Which platform types can be run simultaneously ("stacked") to cut idle time.
 // Package work (Amazon Flex) is block-based and doesn't stack.
@@ -67,7 +71,7 @@ function estimateHourlyEarnings(platformId, dayIndex, hour, opts = {}) {
   const surge = Math.min(p.surgeCeiling, Math.max(1.0, demand));
   const base = p.baselineHourly * market.multiplier;
   let gross = base * surge * weatherMod * eventMod;
-  if (calibrated) gross *= state.calibrationFactor;
+  if (calibrated) gross *= effectiveFactor(platformId);
 
   // Fuel & vehicle cost estimate per hour of active work
   const milesPerHour = milesPerHourFor(platformId);
@@ -85,6 +89,21 @@ function estimateHourlyEarnings(platformId, dayIndex, hour, opts = {}) {
     surge,
     demand,
   };
+}
+
+// Blend the community crowd-calibration (per market+platform) with the
+// driver's own logged calibration. Community sets the starting crowd factor;
+// the driver's personal logs progressively override it as they accumulate.
+function effectiveFactor(platformId) {
+  const comm = communityFor(state.market, platformId);
+  const base = comm.samples > 0 ? comm.mult : 1.0;
+  const personalSamples = state.earningsLog.length;
+  let factor = base;
+  if (personalSamples > 0) {
+    const w = Math.min(personalSamples, 12) / 12;   // saturates at 12 sessions
+    factor = base * (1 - w) + state.calibrationFactor * w;
+  }
+  return Math.min(3, Math.max(0.3, factor));
 }
 
 // Compute take-home after estimated self-employment + income tax.
@@ -430,6 +449,7 @@ function renderNowRecommendation() {
   else if (dem >= 1.0) { rating = "Steady demand right now"; ratingCls = "steady"; }
   else { rating = "Slow right now — you may wait between jobs"; ratingCls = "slow"; }
 
+  const conf = confidenceFor(state.market);
   card.innerHTML = `
     <div class="hero" style="--c:${p.color}">
       <div class="hero-badge" style="background:${p.color}">${p.name[0]}</div>
@@ -437,6 +457,7 @@ function renderNowRecommendation() {
         <div class="hero-line">It's ${DAYS[d]} ${hourLabel(h)}. Your best move is to drive
           <strong style="color:${p.color}">${p.name}</strong>${zone ? ` around <strong>${zone.name}</strong>` : ""}.</div>
         <div class="hero-rating ${ratingCls}">${rating}</div>
+        <div class="hero-conf"><span class="conf-dot ${conf.cls}"></span>${conf.label} · based on ${conf.count.toLocaleString()} driver-sessions in ${MARKETS[state.market].name.split(",")[0]}</div>
       </div>
       <div class="hero-earn">
         <div class="hero-num">${fmt(best.est.net)}<span class="muted">/hr</span></div>
@@ -444,6 +465,17 @@ function renderNowRecommendation() {
       </div>
     </div>
   `;
+}
+
+// Data confidence for a market = pooled community sessions + this driver's logs.
+function confidenceFor(market) {
+  const count = communityTotalSamples(market) + state.earningsLog.length;
+  let label, cls;
+  if (count >= 1000) { label = "High-confidence local data"; cls = "busy"; }
+  else if (count >= 200) { label = "Moderate local data"; cls = "steady"; }
+  else if (count >= 20) { label = "Limited local data"; cls = "slow"; }
+  else { label = "Modeled estimate — little local data yet"; cls = "slow"; }
+  return { count, label, cls };
 }
 
 function renderComparison() {
@@ -474,6 +506,44 @@ function renderComparison() {
   }
   const ctx = document.getElementById("compare-context");
   if (ctx) ctx.textContent = `${DAYS[d]} ${hourLabel(h)} · ${MARKETS[state.market].name} · net $/hr after fuel & wear`;
+}
+
+function renderBonuses() {
+  const wrap = document.getElementById("bonus-list");
+  if (!wrap) return;
+  const now = new Date();
+  const d = now.getDay();
+  const h = now.getHours();
+  // Rank apps the driver ISN'T already using by how hot they are right now.
+  const candidates = Object.keys(PLATFORMS)
+    .filter(id => !state.selectedPlatforms.has(id) && REFERRALS[id])
+    .map(id => ({ id, est: estimateHourlyEarnings(id, d, h), ref: REFERRALS[id] }))
+    .sort((a, b) => b.est.net - a.est.net)
+    .slice(0, 4);
+
+  wrap.innerHTML = "";
+  if (!candidates.length) {
+    wrap.innerHTML = `<div class="muted" style="font-size:13px">You've selected every app with an active bonus. Nice.</div>`;
+    return;
+  }
+  for (const c of candidates) {
+    const p = PLATFORMS[c.id];
+    const hot = c.est.demand >= 1.4 ? `<span class="bonus-hot">🔥 hot right now</span>` : "";
+    const el = document.createElement("div");
+    el.className = "bonus-card";
+    el.innerHTML = `
+      <span class="dot" style="background:${p.color}"></span>
+      <div class="bonus-info">
+        <div class="bonus-name">${p.name} ${hot}</div>
+        <div class="muted" style="font-size:12px">${c.ref.blurb} · ~${fmt(c.est.net)}/hr here now</div>
+      </div>
+      <a class="bonus-amt" href="#" role="button" title="Example referral offer (placeholder link)">$${c.ref.amount}</a>
+    `;
+    el.querySelector("a").addEventListener("click", e => e.preventDefault());
+    wrap.appendChild(el);
+  }
+  const ctx = document.getElementById("bonus-context");
+  if (ctx) ctx.textContent = `· ${MARKETS[state.market].name}`;
 }
 
 function renderTier() {
@@ -510,8 +580,10 @@ function renderAll() {
   renderComparison();
   renderZones();
   renderNowRecommendation();
+  renderBonuses();
   renderEarningsLog();
   renderTrend();
+  renderTaxTracker();
   renderOutlook();
   renderTier();
   saveState();
@@ -557,6 +629,7 @@ function serializeState() {
     incomeTaxRate: state.incomeTaxRate,
     selectedPlatforms: [...state.selectedPlatforms],
     earningsLog: state.earningsLog,
+    expenses: state.expenses,
     tier: state.tier,
   };
 }
@@ -583,6 +656,9 @@ function hydrateState(s) {
   if (Array.isArray(s.earningsLog)) {
     state.earningsLog = s.earningsLog.filter(e =>
       e && PLATFORMS[e.platform] && typeof e.actualGross === "number" && typeof e.predictedGross === "number");
+  }
+  if (Array.isArray(s.expenses)) {
+    state.expenses = s.expenses.filter(x => x && typeof x.amount === "number" && x.date && x.category);
   }
   if (s.tier) state.tier = s.tier;
   recomputeCalibration();
@@ -742,6 +818,123 @@ function renderEarningsLog() {
       summary.textContent = `Calibrated to your logs: your actual earnings run ${pct}% ${dir} the baseline model. All estimates now scaled ×${f.toFixed(2)}.`;
     }
   }
+}
+
+// ---------------- Expenses & year-to-date tax tracker ----------------
+
+function currentYear() { return new Date().getFullYear(); }
+
+function ytdBusinessMiles() {
+  const yr = currentYear();
+  let miles = 0;
+  for (const e of state.earningsLog) {
+    if (new Date(e.date + "T12:00:00").getFullYear() === yr) {
+      miles += e.hours * milesPerHourFor(e.platform);
+    }
+  }
+  return miles;
+}
+
+function ytdExpenses() {
+  const yr = currentYear();
+  return state.expenses
+    .filter(x => new Date(x.date + "T12:00:00").getFullYear() === yr)
+    .reduce((s, x) => s + x.amount, 0);
+}
+
+function addExpense({ date, category, amount }) {
+  state.expenses.push({ id: Date.now() + "-" + Math.random().toString(36).slice(2, 7), date, category, amount });
+}
+
+function deleteExpense(id) {
+  state.expenses = state.expenses.filter(x => x.id !== id);
+}
+
+function renderTaxTracker() {
+  const milesEl = document.getElementById("tt-miles");
+  if (!milesEl) return;
+  const miles = ytdBusinessMiles();
+  const standard = miles * IRS_MILEAGE_RATE;
+  const actual = ytdExpenses();
+  const useStandard = standard >= actual;
+  const deduction = Math.max(standard, actual);
+  const marginalRate = SE_TAXABLE_PORTION * SE_TAX_RATE + state.incomeTaxRate;
+  const savings = deduction * marginalRate;
+
+  milesEl.textContent = Math.round(miles).toLocaleString() + " mi";
+  document.getElementById("tt-standard").textContent = fmt(standard);
+  document.getElementById("tt-actual").textContent = fmt(actual);
+  document.getElementById("tt-standard-row").classList.toggle("winner", useStandard);
+  document.getElementById("tt-actual-row").classList.toggle("winner", !useStandard);
+  document.getElementById("tt-method").textContent = useStandard ? "Standard mileage" : "Actual expenses";
+  document.getElementById("tt-savings").textContent = fmt(savings);
+  document.getElementById("tt-deduction").textContent = fmt(deduction);
+
+  const tbody = document.getElementById("expense-rows");
+  tbody.innerHTML = "";
+  if (!state.expenses.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="muted" style="padding:12px 0">No expenses logged yet. Track gas, maintenance, phone, etc. to compare against the mileage deduction.</td></tr>`;
+  } else {
+    const sorted = [...state.expenses].sort((a, b) => b.date.localeCompare(a.date));
+    for (const x of sorted) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${x.date}</td>
+        <td>${x.category}</td>
+        <td class="num">${fmt(x.amount)}</td>
+        <td><button class="btn-sm exp-del" data-id="${x.id}" title="Delete">✕</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+  tbody.querySelectorAll(".exp-del").forEach(btn => {
+    btn.addEventListener("click", () => { deleteExpense(btn.dataset.id); renderAll(); });
+  });
+}
+
+// ---------------- Paste-to-import earnings ----------------
+
+const PLATFORM_KEYWORDS = [
+  ["ubereats", /uber\s*eats/i],
+  ["uber", /uber/i],
+  ["lyft", /lyft/i],
+  ["doordash", /door\s*dash|dasher/i],
+  ["grubhub", /grub\s*hub/i],
+  ["instacart", /instacart/i],
+  ["spark", /spark|walmart/i],
+  ["amazonflex", /amazon\s*flex|flex/i],
+];
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+function parseEarningsPaste(text) {
+  const out = {};
+  // Platform
+  for (const [id, re] of PLATFORM_KEYWORDS) {
+    if (re.test(text)) { out.platform = id; break; }
+  }
+  // Largest dollar amount = weekly total gross
+  const amounts = [...text.matchAll(/\$\s?([\d,]+(?:\.\d{1,2})?)/g)]
+    .map(m => parseFloat(m[1].replace(/,/g, "")))
+    .filter(n => !isNaN(n));
+  if (amounts.length) out.gross = Math.max(...amounts);
+  // Hours: "12.5 hr", "12 hours", "12h 30m", "Online 12:30"
+  let hm = text.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b(?:\s*(\d+)\s*m)?/i);
+  if (hm) {
+    out.hours = parseFloat(hm[1]) + (hm[2] ? parseInt(hm[2], 10) / 60 : 0);
+  }
+  // Date: ISO, M/D[/Y], or "May 18"
+  let dm = text.match(/(\d{4}-\d{2}-\d{2})/);
+  if (dm) {
+    out.date = dm[1];
+  } else if ((dm = text.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/))) {
+    const y = dm[3] ? (dm[3].length === 2 ? "20" + dm[3] : dm[3]) : String(currentYear());
+    out.date = `${y}-${String(+dm[1]).padStart(2, "0")}-${String(+dm[2]).padStart(2, "0")}`;
+  } else if ((dm = text.match(new RegExp("\\b(" + MONTHS.join("|") + ")[a-z]*\\.?\\s+(\\d{1,2})\\b", "i")))) {
+    const mo = MONTHS.indexOf(dm[1].slice(0, 3).toLowerCase()) + 1;
+    out.date = `${currentYear()}-${String(mo).padStart(2, "0")}-${String(+dm[2]).padStart(2, "0")}`;
+  }
+  return out;
 }
 
 // ---------------- Shareable setup link ----------------
@@ -1179,6 +1372,33 @@ function wireControls() {
     setTimeout(() => { btn.textContent = original; }, 1800);
   });
 
+  document.getElementById("exp-add").addEventListener("click", () => {
+    const date = document.getElementById("exp-date").value;
+    const category = document.getElementById("exp-category").value;
+    const amount = parseFloat(document.getElementById("exp-amount").value);
+    if (!date || !category || !(amount > 0)) return;
+    addExpense({ date, category, amount });
+    document.getElementById("exp-amount").value = "";
+    renderAll();
+  });
+
+  document.getElementById("paste-parse").addEventListener("click", () => {
+    const text = document.getElementById("paste-input").value;
+    const result = document.getElementById("paste-result");
+    if (!text.trim()) { result.textContent = "Paste your summary text first."; return; }
+    const parsed = parseEarningsPaste(text);
+    const filled = [];
+    if (parsed.date) { document.getElementById("log-date").value = parsed.date; filled.push("date"); }
+    if (parsed.platform) { document.getElementById("log-platform").value = parsed.platform; filled.push("app"); }
+    if (parsed.hours) { document.getElementById("log-hours").value = parsed.hours.toFixed(1); filled.push("hours"); }
+    if (parsed.gross) { document.getElementById("log-gross").value = parsed.gross.toFixed(2); filled.push("earnings"); }
+    result.textContent = filled.length
+      ? `Found ${filled.join(", ")}. Review the form below, then click "Log it".`
+      : "Couldn't read that — try entering it manually below.";
+  });
+
+  document.getElementById("alerts-toggle").addEventListener("click", toggleSurgeAlerts);
+
   document.getElementById("intro-dismiss").addEventListener("click", () => {
     document.getElementById("intro").style.display = "none";
     try { localStorage.setItem(INTRO_KEY, "1"); } catch (e) { /* ignore */ }
@@ -1187,6 +1407,72 @@ function wireControls() {
   document.getElementById("tier-toggle").addEventListener("click", () => {
     state.tier = state.tier === "pro" ? "free" : "pro"; renderAll();
   });
+}
+
+// ---------------- Surge alerts (local, while the app is open) ----------------
+
+let alertsOn = false;
+let alertTimer = null;
+const firedAlerts = new Set();
+
+async function toggleSurgeAlerts() {
+  const btn = document.getElementById("alerts-toggle");
+  if (alertsOn) {
+    alertsOn = false;
+    if (alertTimer) clearInterval(alertTimer);
+    btn.textContent = "🔔 Surge alerts";
+    btn.classList.remove("primary");
+    return;
+  }
+  if (!("Notification" in window)) {
+    btn.textContent = "Alerts not supported";
+    return;
+  }
+  let perm = Notification.permission;
+  if (perm === "default") perm = await Notification.requestPermission();
+  if (perm !== "granted") {
+    btn.textContent = "🔔 Alerts blocked";
+    return;
+  }
+  alertsOn = true;
+  btn.textContent = "🔔 Alerts on";
+  btn.classList.add("primary");
+  checkSurge();
+  alertTimer = setInterval(checkSurge, 60000);   // re-check every minute while open
+}
+
+// Fire a notification when demand for a selected app is about to jump.
+function checkSurge() {
+  if (!alertsOn || Notification.permission !== "granted") return;
+  const now = new Date();
+  const d = now.getDay();
+  const h = now.getHours();
+  const next = (h + 1) % 24;
+  const nextDay = next === 0 ? (d + 1) % 7 : d;
+
+  let best = null;
+  for (const id of state.selectedPlatforms) {
+    const nowEst = estimateHourlyEarnings(id, d, h);
+    const soonEst = estimateHourlyEarnings(id, nextDay, next);
+    if (soonEst.demand >= 1.7 && soonEst.demand > nowEst.demand + 0.3) {
+      if (!best || soonEst.net > best.net) best = { id, net: soonEst.net, demand: soonEst.demand };
+    }
+  }
+  if (!best) return;
+  const key = `${nextDay}-${next}-${best.id}`;
+  if (firedAlerts.has(key)) return;
+  firedAlerts.add(key);
+
+  const p = PLATFORMS[best.id];
+  const zones = recommendZones(nextDay, next);
+  const where = zones.length ? ` near ${zones[0].name}` : "";
+  try {
+    new Notification(`Surge incoming: ${p.name}`, {
+      body: `Demand jumps around ${hourLabel(next)}${where} — about ${fmt(best.net)}/hr. Get positioned.`,
+      icon: "icon.svg",
+      tag: key,
+    });
+  } catch (e) { /* notification failed; ignore */ }
 }
 
 function populateLogPlatforms() {
@@ -1205,6 +1491,14 @@ function populateLogPlatforms() {
     start.appendChild(opt);
   }
   start.value = "17";
+
+  const cat = document.getElementById("exp-category");
+  cat.innerHTML = "";
+  for (const c of EXPENSE_CATEGORIES) {
+    const opt = document.createElement("option");
+    opt.value = c; opt.textContent = c;
+    cat.appendChild(opt);
+  }
 }
 
 function applyPlanMode() {
@@ -1249,6 +1543,7 @@ document.addEventListener("DOMContentLoaded", () => {
   populateLogPlatforms();
   const today = new Date().toISOString().slice(0, 10);
   document.getElementById("log-date").value = today;
+  document.getElementById("exp-date").value = today;
   document.getElementById("v-fuel").value = state.fuelPrice.toFixed(2);
   document.getElementById("v-mpg").value = state.mpg;
   applyStateToControls();
@@ -1260,3 +1555,10 @@ document.addEventListener("DOMContentLoaded", () => {
   renderAll();
   loadForecast();
 });
+
+// Register the service worker so Peakr is installable and works offline.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => { /* SW unavailable; app still works */ });
+  });
+}

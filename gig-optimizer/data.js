@@ -148,6 +148,28 @@ const DEMAND_CURVES = {
 
 // Markets with cost-of-living adjusted earnings multipliers and hot zones.
 const MARKETS = {
+  "nash": {
+    name: "Nashville, TN",
+    multiplier: 1.00,
+    fuelCost: 2.95,
+    timezone: "America/Chicago",
+    center: { lat: 36.1627, lng: -86.7816 },
+    venues: [
+      { name: "Bridgestone Arena", types: ["concert", "sports"] },
+      { name: "Nissan Stadium", types: ["sports", "concert"] },
+      { name: "Ascend Amphitheater", types: ["concert"] },
+      { name: "Grand Ole Opry", types: ["concert"] },
+      { name: "Music City Center", types: ["convention"] },
+    ],
+    zones: [
+      { name: "Broadway / Honky-Tonk Row", lat: 36.1606, lng: -86.7783, demand: { rideshare: 2.8, delivery: 1.6, grocery: 1.0 } },
+      { name: "The Gulch", lat: 36.1518, lng: -86.7843, demand: { rideshare: 2.1, delivery: 1.9, grocery: 1.4 } },
+      { name: "Midtown / Music Row", lat: 36.1490, lng: -86.7990, demand: { rideshare: 1.9, delivery: 1.8, grocery: 1.4 } },
+      { name: "BNA Airport", lat: 36.1245, lng: -86.6782, demand: { rideshare: 2.6, delivery: 0.3, grocery: 0.2 } },
+      { name: "East Nashville", lat: 36.1780, lng: -86.7430, demand: { rideshare: 1.6, delivery: 2.1, grocery: 1.5 } },
+      { name: "Vanderbilt / West End", lat: 36.1447, lng: -86.8027, demand: { rideshare: 1.8, delivery: 1.9, grocery: 1.6 } },
+    ],
+  },
   "nyc": {
     name: "New York City, NY",
     multiplier: 1.45,
