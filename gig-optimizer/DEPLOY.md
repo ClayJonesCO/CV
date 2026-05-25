@@ -7,6 +7,14 @@ deploy the backend and flip it on only when you're ready.
 
 Detailed backend reference: [`backend/README.md`](./backend/README.md).
 
+> **Automated option:** `.github/workflows/deploy.yml` runs all of the steps
+> below (backend + GitHub Pages) on demand. After the one-time setup — enable
+> Pages with the "GitHub Actions" source and add the repo secrets listed in that
+> file — merge this branch so the workflow lands on the default branch, then
+> Actions → **Deploy Peakr** → **Run workflow**. The manual steps below are the
+> same thing by hand. (I can't trigger it for you: it runs in your repo under
+> your account and needs secrets that aren't in this environment.)
+
 ---
 
 ## 0. Prerequisites
