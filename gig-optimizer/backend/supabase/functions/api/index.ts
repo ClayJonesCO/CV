@@ -14,7 +14,8 @@
 //   POST   /api/push/subscribe                                  [auth]
 //   DELETE /api/push/subscribe                                  [auth]
 
-import { admin, CORS, json, driverFromToken } from "../_shared/util.ts";
+import { admin, CORS, json, driverFromToken, sha256hex } from "../_shared/util.ts";
+import { getForecast, getEvents } from "../_shared/feeds.ts";
 
 const db = admin();
 
@@ -71,6 +72,16 @@ Deno.serve(async (req) => {
     return json((data ?? []).map((r) => ({ platform: r.platform, amount: r.amount_cents / 100, url: r.url, blurb: r.blurb })));
   }
 
+  // 7-day weather + local events, proxied & cached server-side (keys hidden).
+  if (req.method === "GET" && (path === "/forecast" || path === "/events")) {
+    const market = url.searchParams.get("market");
+    if (!market) return json({ error: "market required" }, 400);
+    if (path === "/events") return json(await getEvents(db, market), 200, { "cache-control": "public, max-age=1800" });
+    const [days, events] = await Promise.all([getForecast(db, market), getEvents(db, market)]);
+    for (const d of days) d.event = events[d.date] ?? null;     // merge events onto days
+    return json({ source: "live", days }, 200, { "cache-control": "public, max-age=900" });
+  }
+
   // ---- anonymous token issuance ----
   if (req.method === "POST" && path === "/auth/anon") {
     const { data: driver, error: de } = await db.from("drivers").insert({}).select("id").single();
@@ -83,6 +94,56 @@ Deno.serve(async (req) => {
   // ---- everything else needs a valid device token ----
   const driver_id = await driverFromToken(db, req);
   if (!driver_id) return json({ error: "unauthorized" }, 401);
+
+  // Who am I (for showing signed-in state across devices)?
+  if (req.method === "GET" && path === "/me") {
+    const { data } = await db.from("drivers").select("id,email").eq("id", driver_id).maybeSingle();
+    return json({ driver_id, email: data?.email ?? null });
+  }
+
+  // Email account: request a one-time code (Phase 3 cross-device sync).
+  if (req.method === "POST" && path === "/auth/email") {
+    const { email } = await req.json();
+    if (!email || !/.+@.+\..+/.test(email)) return json({ error: "valid email required" }, 400);
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code_hash = await sha256hex(`${email}:${code}`);
+    const expires_at = new Date(Date.now() + 15 * 60_000).toISOString();
+    await db.from("email_otps").upsert({ email, code_hash, driver_id, expires_at });
+    const resendKey = Deno.env.get("RESEND_API_KEY");
+    if (resendKey) {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${resendKey}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          from: Deno.env.get("OTP_FROM") ?? "Peakr <onboarding@resend.dev>",
+          to: email, subject: "Your Peakr sign-in code",
+          text: `Your Peakr code is ${code}. It expires in 15 minutes.`,
+        }),
+      }).catch(() => {});
+      return json({ sent: true });
+    }
+    return json({ sent: true, dev_code: code });   // no email provider configured: dev mode
+  }
+
+  // Verify the code; link the email to this driver, merging an existing account.
+  if (req.method === "POST" && path === "/auth/verify") {
+    const { email, code } = await req.json();
+    const { data: otp } = await db.from("email_otps").select("*").eq("email", email).maybeSingle();
+    if (!otp || new Date(otp.expires_at) < new Date()) return json({ error: "code expired" }, 400);
+    if (otp.code_hash !== await sha256hex(`${email}:${code}`)) return json({ error: "wrong code" }, 400);
+    await db.from("email_otps").delete().eq("email", email);
+
+    const { data: existing } = await db.from("drivers").select("id").eq("email", email).maybeSingle();
+    let finalDriver = driver_id;
+    if (existing && existing.id !== driver_id) {
+      // This device verified an email that already owns an account → merge into it.
+      await db.rpc("merge_driver", { src: driver_id, dst: existing.id });
+      finalDriver = existing.id;
+    } else if (!existing) {
+      await db.from("drivers").update({ email }).eq("id", driver_id);
+    }
+    return json({ driver_id: finalDriver, email });
+  }
 
   if (path === "/sessions") {
     if (req.method === "POST") {

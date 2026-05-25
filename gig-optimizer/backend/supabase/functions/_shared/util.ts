@@ -22,6 +22,11 @@ export function json(body: unknown, status = 200, extra: Record<string, string> 
   });
 }
 
+export async function sha256hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 // Resolve the driver from the opaque bearer token; touch last_seen.
 export async function driverFromToken(db: SupabaseClient, req: Request): Promise<string | null> {
   const auth = req.headers.get("authorization") ?? "";

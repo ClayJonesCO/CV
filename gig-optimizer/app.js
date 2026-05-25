@@ -1055,6 +1055,65 @@ function eventsForDates(marketId, dates) {
   return out;
 }
 
+// ---------------- Account & cross-device sync (Phase 3) ----------------
+
+function showSignedIn(email) {
+  document.getElementById("account-signedout").hidden = true;
+  const si = document.getElementById("account-signedin");
+  si.hidden = false;
+  document.getElementById("account-email-label").textContent = email;
+}
+
+// Merge the account's server-side history into local state (dedupe by id).
+async function pullAndMerge() {
+  const [sessions, expenses] = await Promise.all([API.pullSessions(), API.pullExpenses()]);
+  const haveS = new Set(state.earningsLog.map(e => e.id));
+  for (const s of sessions) if (!haveS.has(s.id)) state.earningsLog.push(s);
+  const haveE = new Set(state.expenses.map(x => x.id));
+  for (const x of expenses) if (!haveE.has(x.id)) state.expenses.push(x);
+  recomputeCalibration();
+  renderAll();
+}
+
+async function initAccount() {
+  if (!API || !API.enabled()) return;
+  document.getElementById("account").style.display = "";
+  await API.ensureToken();
+  const who = await API.me();
+  if (who && who.email) {
+    showSignedIn(who.email);
+    await pullAndMerge();          // hydrate this device from the account
+  }
+}
+
+function wireAccount() {
+  const panel = document.getElementById("account-panel");
+  document.getElementById("account-btn").addEventListener("click", () => { panel.hidden = !panel.hidden; });
+
+  document.getElementById("account-send").addEventListener("click", async () => {
+    const email = document.getElementById("account-email").value.trim();
+    const msg = document.getElementById("account-msg");
+    if (!/.+@.+\..+/.test(email)) { msg.textContent = "Enter a valid email."; return; }
+    msg.textContent = "Sending…";
+    const res = await API.requestEmailCode(email);
+    if (!res) { msg.textContent = "Couldn't send a code — check your connection."; return; }
+    document.getElementById("account-code-row").hidden = false;
+    msg.textContent = res.dev_code ? `Dev mode: your code is ${res.dev_code}` : "Code sent — check your email.";
+  });
+
+  document.getElementById("account-verify").addEventListener("click", async () => {
+    const email = document.getElementById("account-email").value.trim();
+    const code = document.getElementById("account-code").value.trim();
+    const msg = document.getElementById("account-msg");
+    msg.textContent = "Verifying…";
+    const res = await API.verifyEmailCode(email, code);
+    if (!res || !res.email) { msg.textContent = "Wrong or expired code."; return; }
+    showSignedIn(res.email);
+    await pullAndMerge();
+    setTimeout(() => { panel.hidden = true; }, 800);
+  });
+}
+
 // Pull the live community model from the backend (when configured) and let it
 // override the seeded data. No-op when the backend feature flag is off.
 async function syncMarketModel() {
@@ -1069,18 +1128,31 @@ async function syncMarketModel() {
 
 async function loadForecast() {
   const marketId = state.market;
-  let days;
-  let sourceLabel;
-  try {
-    days = await fetchForecast(marketId);
-    sourceLabel = "live · Open-Meteo";
-  } catch (e) {
-    days = mockForecast(marketId);
-    sourceLabel = "simulated (live weather unavailable)";
+  let days, sourceLabel, eventsMerged = false;
+
+  // Prefer the backend proxy (real weather + Ticketmaster events, cached) when on.
+  if (API && API.enabled()) {
+    const proxied = await API.fetchForecast(marketId);
+    if (proxied && proxied.days.length) {
+      days = proxied.days;            // events already merged onto each day server-side
+      eventsMerged = true;
+      sourceLabel = "live · Peakr API";
+    }
+  }
+  if (!days) {
+    try {
+      days = await fetchForecast(marketId);
+      sourceLabel = "live · Open-Meteo";
+    } catch (e) {
+      days = mockForecast(marketId);
+      sourceLabel = "simulated (live weather unavailable)";
+    }
   }
   if (marketId !== state.market) return;   // market changed mid-fetch; drop stale result
-  const events = eventsForDates(marketId, days.map(d => d.date));
-  days.forEach(d => { d.event = events[d.date] || null; });
+  if (!eventsMerged) {
+    const events = eventsForDates(marketId, days.map(d => d.date));
+    days.forEach(d => { d.event = events[d.date] || null; });
+  }
   state.forecast = days;
   const src = document.getElementById("forecast-source");
   if (src) src.textContent = sourceLabel;
@@ -1569,9 +1641,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (localStorage.getItem(INTRO_KEY) === "1") document.getElementById("intro").style.display = "none";
   } catch (e) { /* ignore */ }
   document.getElementById("hours-val").textContent = state.hoursPerWeek + " hrs/week";
+  wireAccount();
   renderAll();
   loadForecast();
   syncMarketModel();
+  initAccount();
 });
 
 // Register the service worker so Peakr is installable and works offline.

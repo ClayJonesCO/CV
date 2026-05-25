@@ -69,5 +69,57 @@
     } catch (e) { /* ignore */ }
   }
 
-  window.PEAKR_API = { enabled, ensureToken, fetchMarketModel, postSession, postExpense };
+  // --- Phase 2: live forecast + events proxy ---
+  // Returns { source, days:[{date,weatherKey,tempMax,tempMin,precip,event}] } or null.
+  async function fetchForecast(market) {
+    if (!enabled()) return null;
+    try {
+      const r = await fetch(`${apiBase()}/forecast?market=${encodeURIComponent(market)}`);
+      if (!r.ok) return null;
+      const j = await r.json();
+      return j && Array.isArray(j.days) ? j : null;
+    } catch (e) { return null; }
+  }
+
+  // --- Phase 3: email accounts + cross-device sync ---
+  async function authed(pathName, opts = {}) {
+    const token = await ensureToken();
+    if (!token) return null;
+    try {
+      const r = await fetch(`${apiBase()}${pathName}`, {
+        ...opts,
+        headers: { "content-type": "application/json", "authorization": `Bearer ${token}`, ...(opts.headers || {}) },
+      });
+      return r.ok ? await r.json().catch(() => ({})) : null;
+    } catch (e) { return null; }
+  }
+
+  function me() { return authed("/me"); }
+  function requestEmailCode(email) {
+    return authed("/auth/email", { method: "POST", body: JSON.stringify({ email }) });
+  }
+  function verifyEmailCode(email, code) {
+    return authed("/auth/verify", { method: "POST", body: JSON.stringify({ email, code }) });
+  }
+
+  // Pull the account's server-side history (maps snake_case/cents → client shape).
+  async function pullSessions() {
+    const rows = await authed("/sessions");
+    if (!Array.isArray(rows)) return [];
+    return rows.map((r) => ({
+      id: r.id, date: r.occurred_on, platform: r.platform, startHour: r.start_hour,
+      hours: Number(r.hours), actualGross: r.gross_cents / 100,
+      predictedGross: r.predicted_cents != null ? r.predicted_cents / 100 : 0,
+    }));
+  }
+  async function pullExpenses() {
+    const rows = await authed("/expenses");
+    if (!Array.isArray(rows)) return [];
+    return rows.map((r) => ({ id: r.id, date: r.spent_on, category: r.category, amount: r.amount_cents / 100 }));
+  }
+
+  window.PEAKR_API = {
+    enabled, ensureToken, fetchMarketModel, postSession, postExpense,
+    fetchForecast, me, requestEmailCode, verifyEmailCode, pullSessions, pullExpenses,
+  };
 })();

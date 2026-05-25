@@ -24,11 +24,18 @@ backend/
       0001_init.sql         ← schema, aggregation + surge SQL, RLS, seed
       0002_schedules.sql    ← pg_cron jobs (run after enabling pg_cron/pg_net)
     functions/
-      _shared/util.ts       ← CORS, admin client, token→driver resolver
-      api/index.ts          ← auth-anon, sessions, expenses, market-model, referrals, push
+      _shared/util.ts       ← CORS, admin client, token→driver resolver, sha256
+      _shared/feeds.ts      ← Open-Meteo + Ticketmaster fetch/cache (Phase 2)
+      api/index.ts          ← auth, sessions, expenses, market-model, referrals,
+                              push, forecast/events proxy, email accounts
       aggregate/index.ts    ← manual/scheduled model rebuild
       scan-surges/index.ts  ← Web Push worker
 ```
+
+Endpoints now span all three phases: the flywheel + sync + push + referrals
+(Phase 1), the cached forecast/events proxy `GET /forecast|/events` (Phase 2),
+and email accounts `POST /auth/email|/auth/verify` + `GET /me` for cross-device
+sync (Phase 3).
 
 ## Design
 
@@ -99,8 +106,15 @@ Self-reported data only — Peakr never scrapes or automates platform accounts.
 Coarse geohash (~5 km), k-anonymity before any cell is exposed, outlier
 trimming, and full per-driver deletion (`DELETE /sessions`, account deletion).
 
-## Rollout
+## Rollout status
 
-1. **This package** — flywheel + sync + surge push + referrals.
-2. Live forecast/events proxies with real API keys (cache tables included).
-3. Email accounts + cross-device merge, referral conversion tracking, analytics.
+1. ✅ **Flywheel + sync + surge push + referrals.**
+2. ✅ **Live forecast/events proxy** (`/forecast`, `/events`) — Open-Meteo +
+   Ticketmaster, cached in `forecast_cache`/`events_cache`. The client prefers it
+   when the flag is on, else falls back to direct Open-Meteo + simulated events.
+3. ✅ **Email accounts + cross-device sync** — `/auth/email` + `/auth/verify`
+   (OTP; emailed via Resend, or returned as `dev_code` when no provider is set),
+   `merge_driver()` folds an anonymous device into the existing account, and the
+   client pulls + merges the account's sessions/expenses on sign-in.
+
+Remaining: referral conversion tracking and an analytics dashboard.

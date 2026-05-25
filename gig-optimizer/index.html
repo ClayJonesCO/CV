@@ -18,6 +18,26 @@
       <a href="../index.html" class="back-link" style="margin-left:16px">&larr; back to CV</a>
     </div>
     <div class="tier">
+      <div id="account" class="account" style="display:none">
+        <button id="account-btn" class="btn" title="Sign in with email to sync your log across devices">☁ Sync</button>
+        <div id="account-panel" class="account-panel" hidden>
+          <div id="account-signedout">
+            <div class="muted" style="font-size:12px;margin-bottom:6px">Sync your log &amp; expenses across devices.</div>
+            <div class="account-row">
+              <input id="account-email" type="email" placeholder="you@email.com">
+              <button id="account-send" class="btn" type="button">Send code</button>
+            </div>
+            <div id="account-code-row" class="account-row" hidden>
+              <input id="account-code" inputmode="numeric" placeholder="6-digit code">
+              <button id="account-verify" class="btn primary" type="button">Verify</button>
+            </div>
+            <div id="account-msg" class="muted" style="font-size:12px;margin-top:6px"></div>
+          </div>
+          <div id="account-signedin" hidden>
+            <span class="muted" style="font-size:13px">☁ Synced as <strong id="account-email-label"></strong></span>
+          </div>
+        </div>
+      </div>
       <button id="alerts-toggle" class="btn" title="Get a heads-up when a surge window is about to start (while Peakr is open)">🔔 Surge alerts</button>
       <button id="share-link" class="btn" title="Copy a link that restores this exact setup">Share setup</button>
       <span id="tier-label">Free Preview</span>
