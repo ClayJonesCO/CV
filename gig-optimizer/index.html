@@ -124,6 +124,14 @@
       </section>
 
       <section class="panel">
+        <h2>7-Day Outlook <span class="muted" id="forecast-source" style="text-transform:none;letter-spacing:0;font-weight:400">loading…</span></h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">
+          Weather-aware projection of the best app and estimated earnings per day, including known local events. Uplift is vs. a clear day with no event.
+        </p>
+        <div id="outlook-strip" class="outlook-strip"></div>
+      </section>
+
+      <section class="panel">
         <h2>Platform Comparison <span class="muted" id="compare-context" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
         <table class="compare-table">
           <thead>
@@ -220,6 +228,15 @@
         </div>
         <div id="log-error" class="log-error"></div>
         <div id="calibration-summary" class="plan-status"></div>
+
+        <div class="trend-block">
+          <div class="trend-head">
+            <h3 style="margin:0;font-size:15px">Week-over-Week Trend</h3>
+            <span class="muted" id="trend-note" style="font-size:13px"></span>
+          </div>
+          <div id="trend-bars" class="trend-bars"></div>
+        </div>
+
         <div style="overflow-x:auto">
           <table class="compare-table log-table">
             <thead>

@@ -35,6 +35,7 @@ const state = {
   selectedPlatforms: new Set(Object.keys(PLATFORMS)),
   earningsLog: [],          // [{ id, date, platform, startHour, hours, actualGross, predictedGross }]
   calibrationFactor: 1.0,   // derived: total actual / total predicted across the log
+  forecast: [],             // 7-day outlook: [{ date, weatherKey, tempMax, tempMin, precip, event, live }]
   tier: "free",
 };
 
@@ -53,13 +54,15 @@ function milesPerHourFor(platformId) {
 
 function estimateHourlyEarnings(platformId, dayIndex, hour, opts = {}) {
   const calibrated = opts.calibrated !== false;
+  const weatherKey = opts.weather || state.weather;
+  const eventKey = opts.event || state.event;
   const p = PLATFORMS[platformId];
   const market = MARKETS[state.market];
   const curve = curveForDay(platformId, dayIndex);
   const demand = curve[hour];
   const category = TYPE_TO_CATEGORY[p.type];
-  const weatherMod = WEATHER_MODIFIERS[state.weather][category] || 1.0;
-  const eventMod = EVENT_BOOSTS[state.event][category] || 1.0;
+  const weatherMod = WEATHER_MODIFIERS[weatherKey][category] || 1.0;
+  const eventMod = EVENT_BOOSTS[eventKey][category] || 1.0;
 
   const surge = Math.min(p.surgeCeiling, Math.max(1.0, demand));
   const base = p.baselineHourly * market.multiplier;
@@ -493,6 +496,8 @@ function renderAll() {
   renderZones();
   renderNowRecommendation();
   renderEarningsLog();
+  renderTrend();
+  renderOutlook();
   renderTier();
   saveState();
 }
@@ -744,6 +749,250 @@ function applyShareLink() {
   }
 }
 
+// ---------------- 7-day weather + events outlook ----------------
+
+// FNV-1a with a final avalanche mix — gives a well-distributed 32-bit value
+// so derived probabilities vary by date rather than being dominated by the
+// (shared) market-name prefix.
+function hashStr(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995) >>> 0; h ^= h >>> 15;
+  return h >>> 0;
+}
+
+const WEATHER_ICON = {
+  clear: "☀️", cloudy: "⛅", rain: "🌧️", storm: "⛈️", snow: "❄️", hot: "🔥",
+};
+
+// Map WMO weather codes (Open-Meteo) to our model's weather categories.
+function wmoToKey(code, tmaxF) {
+  if (typeof tmaxF === "number" && tmaxF >= 95) return "hot";
+  if ([95, 96, 99].includes(code)) return "storm";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "snow";
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "rain";
+  if ([2, 3, 45, 48].includes(code)) return "cloudy";
+  if ([0, 1].includes(code)) return "clear";
+  return "cloudy";
+}
+
+async function fetchForecast(marketId) {
+  const m = MARKETS[marketId];
+  const c = m.center;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lng}` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+    `&temperature_unit=fahrenheit&timezone=auto&forecast_days=7`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error("weather " + res.status);
+    const j = await res.json();
+    const d = j.daily;
+    return d.time.map((date, i) => ({
+      date,
+      weatherKey: wmoToKey(d.weather_code[i], d.temperature_2m_max[i]),
+      tempMax: Math.round(d.temperature_2m_max[i]),
+      tempMin: Math.round(d.temperature_2m_min[i]),
+      precip: d.precipitation_probability_max ? d.precipitation_probability_max[i] : null,
+      live: true,
+    }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Deterministic offline fallback so the app works without network access.
+function mockForecast(marketId) {
+  const pattern = ["clear", "clear", "cloudy", "rain", "cloudy", "clear", "hot"];
+  const today = new Date();
+  return Array.from({ length: 7 }, (_, i) => {
+    const dt = new Date(today);
+    dt.setDate(today.getDate() + i);
+    const date = dt.toISOString().slice(0, 10);
+    const h = hashStr(marketId + date);
+    const weatherKey = pattern[(h + i) % pattern.length];
+    const tempMax = 52 + (h % 38);
+    return {
+      date, weatherKey, tempMax, tempMin: tempMax - 14,
+      precip: weatherKey === "rain" ? 70 : weatherKey === "storm" ? 85 : 10,
+      live: false,
+    };
+  });
+}
+
+// Simulated upcoming big events (no public ticketing API is CORS-accessible).
+function eventsForDates(marketId, dates) {
+  const venues = MARKETS[marketId].venues || [];
+  const out = {};
+  if (!venues.length) return out;
+  for (const date of dates) {
+    const day = new Date(date + "T12:00:00").getDay();
+    const h = hashStr(marketId + "|" + date);
+    const weekendBoost = (day === 5 || day === 6 || day === 0);
+    const threshold = weekendBoost ? 0.62 : 0.28;
+    if ((h % 1000) / 1000 < threshold) {
+      const v = venues[h % venues.length];
+      const type = v.types[(h >>> 3) % v.types.length];
+      out[date] = { name: v.name, type };
+    }
+  }
+  return out;
+}
+
+async function loadForecast() {
+  const marketId = state.market;
+  let days;
+  let sourceLabel;
+  try {
+    days = await fetchForecast(marketId);
+    sourceLabel = "live · Open-Meteo";
+  } catch (e) {
+    days = mockForecast(marketId);
+    sourceLabel = "simulated (live weather unavailable)";
+  }
+  if (marketId !== state.market) return;   // market changed mid-fetch; drop stale result
+  const events = eventsForDates(marketId, days.map(d => d.date));
+  days.forEach(d => { d.event = events[d.date] || null; });
+  state.forecast = days;
+  const src = document.getElementById("forecast-source");
+  if (src) src.textContent = sourceLabel;
+  renderOutlook();
+}
+
+// Best platform and projected net for a representative ~8h shift on a given day.
+function projectDay(dayIndex, weatherKey, eventKey) {
+  let best = null;
+  for (const id of state.selectedPlatforms) {
+    const nets = [];
+    for (let h = 0; h < 24; h++) {
+      nets.push(estimateHourlyEarnings(id, dayIndex, h, { weather: weatherKey, event: eventKey }).net);
+    }
+    nets.sort((a, b) => b - a);
+    const projected = nets.slice(0, 8).reduce((s, x) => s + x, 0);
+    if (!best || projected > best.projected) best = { id, projected };
+  }
+  return best;
+}
+
+function renderOutlook() {
+  const strip = document.getElementById("outlook-strip");
+  if (!strip) return;
+  strip.innerHTML = "";
+  if (!state.forecast.length) {
+    strip.innerHTML = `<div class="muted" style="padding:12px">Loading forecast…</div>`;
+    return;
+  }
+
+  let maxProj = 0;
+  const computed = state.forecast.map(d => {
+    const dayIndex = new Date(d.date + "T12:00:00").getDay();
+    const eventKey = d.event ? d.event.type : "none";
+    const best = projectDay(dayIndex, d.weatherKey, eventKey);
+    const baseline = best ? projectDay(dayIndex, "clear", "none") : null;
+    const uplift = best && baseline && baseline.projected > 0
+      ? (best.projected - baseline.projected) / baseline.projected : 0;
+    if (best && best.projected > maxProj) maxProj = best.projected;
+    return { d, dayIndex, best, uplift };
+  });
+
+  for (const c of computed) {
+    const { d, dayIndex, best, uplift } = c;
+    const dt = new Date(d.date + "T12:00:00");
+    const intensity = maxProj > 0 && best ? best.projected / maxProj : 0;
+    const p = best ? PLATFORMS[best.id] : null;
+    const upliftHtml = Math.abs(uplift) >= 0.03
+      ? `<span class="ou-uplift ${uplift >= 0 ? "pos" : "neg"}">${uplift >= 0 ? "+" : "−"}${Math.abs(uplift * 100).toFixed(0)}%</span>`
+      : "";
+    const eventHtml = d.event
+      ? `<div class="ou-event" title="Simulated local event">${d.event.name}</div>`
+      : `<div class="ou-event muted">—</div>`;
+    const card = document.createElement("div");
+    card.className = "ou-card";
+    card.style.setProperty("--i", intensity.toFixed(2));
+    card.innerHTML = `
+      <div class="ou-day">${DAYS[dayIndex].slice(0, 3)} <span class="muted">${dt.getMonth() + 1}/${dt.getDate()}</span></div>
+      <div class="ou-wx"><span class="ou-icon">${WEATHER_ICON[d.weatherKey] || "•"}</span> ${WEATHER_MODIFIERS[d.weatherKey].label}</div>
+      <div class="ou-temp muted">${d.tempMax}° / ${d.tempMin}°${d.precip != null ? ` · ${d.precip}%☔` : ""}</div>
+      ${eventHtml}
+      <div class="ou-best">
+        ${p ? `<span class="dot" style="background:${p.color}"></span>${p.name}` : "—"}
+      </div>
+      <div class="ou-proj">${best ? fmt(best.projected) : "—"} ${upliftHtml}<div class="muted ou-sub">est. 8h shift</div></div>
+    `;
+    strip.appendChild(card);
+  }
+}
+
+// ---------------- Week-over-week earnings trend ----------------
+
+function weekStartISO(dateStr) {
+  const d = new Date(dateStr + "T12:00:00");
+  const dow = (d.getDay() + 6) % 7;   // Monday = 0
+  d.setDate(d.getDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+
+function renderTrend() {
+  const wrap = document.getElementById("trend-bars");
+  const note = document.getElementById("trend-note");
+  if (!wrap) return;
+
+  const byWeek = {};
+  for (const e of state.earningsLog) {
+    const wk = weekStartISO(e.date);
+    if (!byWeek[wk]) byWeek[wk] = { gross: 0, hours: 0 };
+    byWeek[wk].gross += e.actualGross;
+    byWeek[wk].hours += e.hours;
+  }
+  const weeks = Object.keys(byWeek).sort();
+  wrap.innerHTML = "";
+
+  if (weeks.length === 0) {
+    wrap.innerHTML = `<div class="muted" style="padding:8px 0">Log earnings across multiple weeks to see your trend.</div>`;
+    if (note) note.textContent = "";
+    return;
+  }
+
+  const recent = weeks.slice(-8);
+  const max = Math.max(...recent.map(w => byWeek[w].gross));
+  const bestWeek = recent.reduce((b, w) => byWeek[w].gross > byWeek[b].gross ? w : b, recent[0]);
+
+  for (const w of recent) {
+    const v = byWeek[w];
+    const pct = max > 0 ? (v.gross / max) * 100 : 0;
+    const dt = new Date(w + "T12:00:00");
+    const isBest = w === bestWeek;
+    const perHr = v.hours > 0 ? v.gross / v.hours : 0;
+    const bar = document.createElement("div");
+    bar.className = "trend-bar" + (isBest ? " best" : "");
+    bar.title = `Week of ${w}: ${fmt(v.gross)} over ${v.hours}h (${fmt(perHr)}/hr)`;
+    bar.innerHTML = `
+      <div class="tb-val">${fmt(v.gross)}</div>
+      <div class="tb-col"><span style="height:${Math.max(4, pct).toFixed(0)}%"></span></div>
+      <div class="tb-label muted">${dt.getMonth() + 1}/${dt.getDate()}</div>
+    `;
+    wrap.appendChild(bar);
+  }
+
+  if (note) {
+    const bw = byWeek[bestWeek];
+    let msg = `Best week: ${fmt(bw.gross)} (week of ${bestWeek}).`;
+    if (recent.length >= 2) {
+      const last = byWeek[recent[recent.length - 1]].gross;
+      const prev = byWeek[recent[recent.length - 2]].gross;
+      if (prev > 0) {
+        const wow = (last - prev) / prev;
+        msg += ` Latest week ${wow >= 0 ? "up" : "down"} ${Math.abs(wow * 100).toFixed(0)}% week-over-week.`;
+      }
+    }
+    note.textContent = msg;
+  }
+}
+
 function populateVehicleMakes() {
   const sel = document.getElementById("v-make");
   sel.innerHTML = `<option value="">— select make —</option>`;
@@ -802,6 +1051,8 @@ function wireControls() {
       state.fuelPrice = MARKETS[state.market].fuelCost;
       document.getElementById("v-fuel").value = state.fuelPrice.toFixed(2);
     }
+    state.forecast = [];
+    loadForecast();
     renderAll();
   });
   document.getElementById("weather").addEventListener("change", e => {
@@ -983,4 +1234,5 @@ document.addEventListener("DOMContentLoaded", () => {
   wireControls();
   document.getElementById("hours-val").textContent = state.hoursPerWeek + " hrs/week";
   renderAll();
+  loadForecast();
 });

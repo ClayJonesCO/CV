@@ -250,6 +250,59 @@ body.pro .tier #tier-label {
 .num.pos { color: var(--accent); }
 .num.neg { color: #f87171; }
 
+.outlook-strip {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;
+}
+@media (max-width: 900px) { .outlook-strip { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 520px) { .outlook-strip { grid-template-columns: repeat(2, 1fr); } }
+.ou-card {
+  background: linear-gradient(180deg, rgba(74,222,128,calc(0.04 + 0.16 * var(--i,0))), var(--panel-2));
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px;
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+}
+.ou-day { font-weight: 700; font-size: 14px; }
+.ou-wx { font-size: 13px; }
+.ou-icon { font-size: 15px; }
+.ou-temp { font-size: 11px; }
+.ou-event {
+  font-size: 11px; font-weight: 600; color: var(--accent-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-top: 1px solid var(--border); padding-top: 4px; margin-top: 2px;
+}
+.ou-event.muted { color: var(--muted); font-weight: 400; }
+.ou-best {
+  display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ou-proj { font-size: 16px; font-weight: 700; color: var(--accent); margin-top: 2px; }
+.ou-proj .ou-sub { font-size: 10px; font-weight: 400; }
+.ou-uplift { font-size: 11px; font-weight: 700; }
+.ou-uplift.pos { color: var(--accent); }
+.ou-uplift.neg { color: #f87171; }
+
+.trend-block { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
+.trend-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.trend-bars {
+  display: flex; gap: 10px; align-items: flex-end; min-height: 120px;
+}
+.trend-bar {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  min-width: 0;
+}
+.tb-val { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tb-col {
+  width: 100%; max-width: 46px; height: 80px; background: var(--panel-2);
+  border-radius: 6px 6px 0 0; display: flex; align-items: flex-end; overflow: hidden;
+}
+.tb-col span {
+  display: block; width: 100%;
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+  border-radius: 6px 6px 0 0;
+}
+.trend-bar.best .tb-col span { background: linear-gradient(180deg, #fbbf24, #f59e0b); }
+.trend-bar.best .tb-val { color: var(--warn); font-weight: 700; }
+.tb-label { font-size: 11px; }
+
 #now-card { padding: 16px; }
 .now-platform {
   display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center;

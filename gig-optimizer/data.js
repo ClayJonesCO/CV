@@ -153,6 +153,13 @@ const MARKETS = {
     multiplier: 1.45,
     fuelCost: 3.85,
     timezone: "America/New_York",
+    center: { lat: 40.7128, lng: -74.0060 },
+    venues: [
+      { name: "Madison Square Garden", types: ["concert", "sports"] },
+      { name: "Barclays Center", types: ["concert", "sports"] },
+      { name: "Yankee Stadium", types: ["sports"] },
+      { name: "Javits Center", types: ["convention"] },
+    ],
     zones: [
       { name: "Midtown Manhattan", lat: 40.7549, lng: -73.9840, demand: { rideshare: 2.4, delivery: 2.0, grocery: 1.6 } },
       { name: "Financial District", lat: 40.7074, lng: -74.0113, demand: { rideshare: 1.9, delivery: 1.7, grocery: 1.3 } },
@@ -167,6 +174,13 @@ const MARKETS = {
     multiplier: 1.30,
     fuelCost: 4.95,
     timezone: "America/Los_Angeles",
+    center: { lat: 34.0522, lng: -118.2437 },
+    venues: [
+      { name: "Crypto.com Arena", types: ["concert", "sports"] },
+      { name: "SoFi Stadium", types: ["sports", "concert"] },
+      { name: "Hollywood Bowl", types: ["concert"] },
+      { name: "LA Convention Center", types: ["convention"] },
+    ],
     zones: [
       { name: "Downtown LA", lat: 34.0407, lng: -118.2468, demand: { rideshare: 2.1, delivery: 1.8, grocery: 1.4 } },
       { name: "Hollywood", lat: 34.0928, lng: -118.3287, demand: { rideshare: 2.3, delivery: 1.9, grocery: 1.3 } },
@@ -181,6 +195,13 @@ const MARKETS = {
     multiplier: 1.10,
     fuelCost: 3.95,
     timezone: "America/Chicago",
+    center: { lat: 41.8781, lng: -87.6298 },
+    venues: [
+      { name: "United Center", types: ["concert", "sports"] },
+      { name: "Wrigley Field", types: ["sports", "concert"] },
+      { name: "Soldier Field", types: ["sports"] },
+      { name: "McCormick Place", types: ["convention"] },
+    ],
     zones: [
       { name: "The Loop", lat: 41.8786, lng: -87.6251, demand: { rideshare: 2.2, delivery: 1.9, grocery: 1.4 } },
       { name: "River North", lat: 41.8924, lng: -87.6342, demand: { rideshare: 2.0, delivery: 2.1, grocery: 1.5 } },
@@ -194,6 +215,13 @@ const MARKETS = {
     multiplier: 1.05,
     fuelCost: 3.25,
     timezone: "America/Chicago",
+    center: { lat: 30.2672, lng: -97.7431 },
+    venues: [
+      { name: "Moody Center", types: ["concert", "sports"] },
+      { name: "Q2 Stadium", types: ["sports"] },
+      { name: "ACL Live", types: ["concert"] },
+      { name: "Austin Convention Center", types: ["convention"] },
+    ],
     zones: [
       { name: "Downtown / 6th St", lat: 30.2672, lng: -97.7431, demand: { rideshare: 2.4, delivery: 1.7, grocery: 1.2 } },
       { name: "South Congress", lat: 30.2486, lng: -97.7494, demand: { rideshare: 1.8, delivery: 1.8, grocery: 1.4 } },
@@ -207,6 +235,13 @@ const MARKETS = {
     multiplier: 1.00,
     fuelCost: 3.15,
     timezone: "America/New_York",
+    center: { lat: 33.7490, lng: -84.3880 },
+    venues: [
+      { name: "State Farm Arena", types: ["concert", "sports"] },
+      { name: "Mercedes-Benz Stadium", types: ["sports", "concert"] },
+      { name: "Truist Park", types: ["sports"] },
+      { name: "Georgia World Congress Center", types: ["convention"] },
+    ],
     zones: [
       { name: "Midtown", lat: 33.7838, lng: -84.3830, demand: { rideshare: 2.0, delivery: 1.8, grocery: 1.4 } },
       { name: "Buckhead", lat: 33.8480, lng: -84.3624, demand: { rideshare: 1.8, delivery: 1.7, grocery: 1.7 } },
@@ -220,6 +255,13 @@ const MARKETS = {
     multiplier: 1.08,
     fuelCost: 3.45,
     timezone: "America/Denver",
+    center: { lat: 39.7392, lng: -104.9903 },
+    venues: [
+      { name: "Ball Arena", types: ["concert", "sports"] },
+      { name: "Empower Field at Mile High", types: ["sports", "concert"] },
+      { name: "Red Rocks Amphitheatre", types: ["concert"] },
+      { name: "Colorado Convention Center", types: ["convention"] },
+    ],
     zones: [
       { name: "LoDo / Downtown", lat: 39.7525, lng: -104.9995, demand: { rideshare: 2.1, delivery: 1.8, grocery: 1.3 } },
       { name: "RiNo", lat: 39.7691, lng: -104.9817, demand: { rideshare: 1.7, delivery: 2.0, grocery: 1.4 } },
