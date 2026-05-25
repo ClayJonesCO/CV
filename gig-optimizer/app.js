@@ -536,8 +536,8 @@ function renderPlanStatus(hoursPlanned, goalReached) {
 
 // ---------------- Persistence ----------------
 
-const STORAGE_KEY = "shiftsmart.v1";
-const INTRO_KEY = "shiftsmart.introDismissed";
+const STORAGE_KEY = "peakr.v1";
+const INTRO_KEY = "peakr.introDismissed";
 
 function serializeState() {
   return {
@@ -625,13 +625,13 @@ function exportCSV() {
       Math.round(s.totalMiles),
     ].join(","));
   }
-  downloadFile("shiftsmart-schedule.csv", "text/csv", lines.join("\n"));
+  downloadFile("peakr-schedule.csv", "text/csv", lines.join("\n"));
 }
 
 function exportICS() {
   const pad = n => String(n).padStart(2, "0");
   const stamp = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}0000`;
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ShiftSmart//Gig Optimizer//EN"];
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Peakr//Gig Optimizer//EN"];
   for (const s of currentShifts) {
     const base = nextDateForDay(s.d);
     const start = new Date(base); start.setHours(s.startHour, 0, 0, 0);
@@ -641,12 +641,12 @@ function exportICS() {
       `DTSTART:${stamp(start)}`,
       `DTEND:${stamp(end)}`,
       `SUMMARY:Drive ${PLATFORMS[s.id].name} (est. ${fmt(s.totalNet)})`,
-      `DESCRIPTION:ShiftSmart recommended shift — ~${fmt(s.totalNet / s.hours)}/hr net over ${Math.round(s.totalMiles)} mi`,
+      `DESCRIPTION:Peakr recommended shift — ~${fmt(s.totalNet / s.hours)}/hr net over ${Math.round(s.totalMiles)} mi`,
       "END:VEVENT",
     );
   }
   lines.push("END:VCALENDAR");
-  downloadFile("shiftsmart-schedule.ics", "text/calendar", lines.join("\r\n"));
+  downloadFile("peakr-schedule.ics", "text/calendar", lines.join("\r\n"));
 }
 
 function downloadFile(name, mime, content) {
