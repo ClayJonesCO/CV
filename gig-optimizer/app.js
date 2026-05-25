@@ -33,6 +33,8 @@ const state = {
   incomeTaxRate: 0.12,
   acceptanceRate: 0.85,
   selectedPlatforms: new Set(Object.keys(PLATFORMS)),
+  earningsLog: [],          // [{ id, date, platform, startHour, hours, actualGross, predictedGross }]
+  calibrationFactor: 1.0,   // derived: total actual / total predicted across the log
   tier: "free",
 };
 
@@ -49,7 +51,8 @@ function milesPerHourFor(platformId) {
   return PLATFORMS[platformId].type === "rideshare" ? 22 : 18;
 }
 
-function estimateHourlyEarnings(platformId, dayIndex, hour) {
+function estimateHourlyEarnings(platformId, dayIndex, hour, opts = {}) {
+  const calibrated = opts.calibrated !== false;
   const p = PLATFORMS[platformId];
   const market = MARKETS[state.market];
   const curve = curveForDay(platformId, dayIndex);
@@ -60,7 +63,8 @@ function estimateHourlyEarnings(platformId, dayIndex, hour) {
 
   const surge = Math.min(p.surgeCeiling, Math.max(1.0, demand));
   const base = p.baselineHourly * market.multiplier;
-  const gross = base * surge * weatherMod * eventMod;
+  let gross = base * surge * weatherMod * eventMod;
+  if (calibrated) gross *= state.calibrationFactor;
 
   // Fuel & vehicle cost estimate per hour of active work
   const milesPerHour = milesPerHourFor(platformId);
@@ -488,6 +492,7 @@ function renderAll() {
   renderComparison();
   renderZones();
   renderNowRecommendation();
+  renderEarningsLog();
   renderTier();
   saveState();
 }
@@ -513,27 +518,58 @@ function renderPlanStatus(hoursPlanned, goalReached) {
 
 const STORAGE_KEY = "shiftsmart.v1";
 
+function serializeState() {
+  return {
+    market: state.market,
+    weather: state.weather,
+    event: state.event,
+    planMode: state.planMode,
+    hoursPerWeek: state.hoursPerWeek,
+    incomeGoal: state.incomeGoal,
+    vehicleMake: state.vehicleMake,
+    vehicleModel: state.vehicleModel,
+    vehicleYear: state.vehicleYear,
+    mpg: state.mpg,
+    mpgAuto: state.mpgAuto,
+    fuelPrice: state.fuelPrice,
+    fuelPriceCustom: state.fuelPriceCustom,
+    incomeTaxRate: state.incomeTaxRate,
+    selectedPlatforms: [...state.selectedPlatforms],
+    earningsLog: state.earningsLog,
+    tier: state.tier,
+  };
+}
+
+function hydrateState(s) {
+  if (!s || typeof s !== "object") return;
+  if (s.market && MARKETS[s.market]) state.market = s.market;
+  if (s.weather) state.weather = s.weather;
+  if (s.event) state.event = s.event;
+  if (s.planMode === "hours" || s.planMode === "goal") state.planMode = s.planMode;
+  if (typeof s.hoursPerWeek === "number") state.hoursPerWeek = s.hoursPerWeek;
+  if (typeof s.incomeGoal === "number") state.incomeGoal = s.incomeGoal;
+  if (typeof s.vehicleMake === "string") state.vehicleMake = s.vehicleMake;
+  if (typeof s.vehicleModel === "string") state.vehicleModel = s.vehicleModel;
+  if (s.vehicleYear) state.vehicleYear = s.vehicleYear;
+  if (typeof s.mpg === "number") state.mpg = s.mpg;
+  if (typeof s.mpgAuto === "boolean") state.mpgAuto = s.mpgAuto;
+  if (typeof s.fuelPrice === "number") state.fuelPrice = s.fuelPrice;
+  if (typeof s.fuelPriceCustom === "boolean") state.fuelPriceCustom = s.fuelPriceCustom;
+  if (typeof s.incomeTaxRate === "number") state.incomeTaxRate = s.incomeTaxRate;
+  if (Array.isArray(s.selectedPlatforms) && s.selectedPlatforms.length) {
+    state.selectedPlatforms = new Set(s.selectedPlatforms.filter(id => PLATFORMS[id]));
+  }
+  if (Array.isArray(s.earningsLog)) {
+    state.earningsLog = s.earningsLog.filter(e =>
+      e && PLATFORMS[e.platform] && typeof e.actualGross === "number" && typeof e.predictedGross === "number");
+  }
+  if (s.tier) state.tier = s.tier;
+  recomputeCalibration();
+}
+
 function saveState() {
   try {
-    const snapshot = {
-      market: state.market,
-      weather: state.weather,
-      event: state.event,
-      planMode: state.planMode,
-      hoursPerWeek: state.hoursPerWeek,
-      incomeGoal: state.incomeGoal,
-      vehicleMake: state.vehicleMake,
-      vehicleModel: state.vehicleModel,
-      vehicleYear: state.vehicleYear,
-      mpg: state.mpg,
-      mpgAuto: state.mpgAuto,
-      fuelPrice: state.fuelPrice,
-      fuelPriceCustom: state.fuelPriceCustom,
-      incomeTaxRate: state.incomeTaxRate,
-      selectedPlatforms: [...state.selectedPlatforms],
-      tier: state.tier,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState()));
   } catch (e) { /* storage unavailable; ignore */ }
 }
 
@@ -541,25 +577,7 @@ function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
-    const s = JSON.parse(raw);
-    if (s.market && MARKETS[s.market]) state.market = s.market;
-    if (s.weather) state.weather = s.weather;
-    if (s.event) state.event = s.event;
-    if (s.planMode === "hours" || s.planMode === "goal") state.planMode = s.planMode;
-    if (typeof s.hoursPerWeek === "number") state.hoursPerWeek = s.hoursPerWeek;
-    if (typeof s.incomeGoal === "number") state.incomeGoal = s.incomeGoal;
-    if (typeof s.vehicleMake === "string") state.vehicleMake = s.vehicleMake;
-    if (typeof s.vehicleModel === "string") state.vehicleModel = s.vehicleModel;
-    if (s.vehicleYear) state.vehicleYear = s.vehicleYear;
-    if (typeof s.mpg === "number") state.mpg = s.mpg;
-    if (typeof s.mpgAuto === "boolean") state.mpgAuto = s.mpgAuto;
-    if (typeof s.fuelPrice === "number") state.fuelPrice = s.fuelPrice;
-    if (typeof s.fuelPriceCustom === "boolean") state.fuelPriceCustom = s.fuelPriceCustom;
-    if (typeof s.incomeTaxRate === "number") state.incomeTaxRate = s.incomeTaxRate;
-    if (Array.isArray(s.selectedPlatforms) && s.selectedPlatforms.length) {
-      state.selectedPlatforms = new Set(s.selectedPlatforms.filter(id => PLATFORMS[id]));
-    }
-    if (s.tier) state.tier = s.tier;
+    hydrateState(JSON.parse(raw));
   } catch (e) { /* corrupt snapshot; ignore */ }
 }
 
@@ -618,6 +636,112 @@ function downloadFile(name, mime, content) {
   document.body.appendChild(a); a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// ---------------- Earnings log & calibration ----------------
+
+// Raw (uncalibrated) model gross for a contiguous block of hours.
+function predictGross(platformId, dayIndex, startHour, hours) {
+  let total = 0;
+  for (let i = 0; i < hours; i++) {
+    total += estimateHourlyEarnings(platformId, dayIndex, (startHour + i) % 24, { calibrated: false }).gross;
+  }
+  return total;
+}
+
+function recomputeCalibration() {
+  let actual = 0, predicted = 0;
+  for (const e of state.earningsLog) {
+    actual += e.actualGross;
+    predicted += e.predictedGross;
+  }
+  let factor = predicted > 0 ? actual / predicted : 1.0;
+  factor = Math.min(3, Math.max(0.3, factor));   // guard against extreme outliers
+  state.calibrationFactor = factor;
+}
+
+function dayOfWeekFromISO(iso) {
+  return new Date(iso + "T12:00:00").getDay();
+}
+
+function addLogEntry({ date, platform, startHour, hours, actualGross }) {
+  const day = dayOfWeekFromISO(date);
+  const predictedGross = predictGross(platform, day, startHour, hours);
+  state.earningsLog.push({
+    id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+    date, platform, startHour, hours, actualGross, predictedGross,
+  });
+  recomputeCalibration();
+}
+
+function deleteLogEntry(id) {
+  state.earningsLog = state.earningsLog.filter(e => e.id !== id);
+  recomputeCalibration();
+}
+
+function renderEarningsLog() {
+  const tbody = document.getElementById("log-rows");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  if (!state.earningsLog.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="muted" style="padding:14px 0">No sessions logged yet. Add one to calibrate the model to your real earnings.</td></tr>`;
+  } else {
+    const sorted = [...state.earningsLog].sort((a, b) => b.date.localeCompare(a.date));
+    for (const e of sorted) {
+      const p = PLATFORMS[e.platform];
+      const variance = e.predictedGross > 0 ? (e.actualGross - e.predictedGross) / e.predictedGross : 0;
+      const vcls = variance >= 0 ? "pos" : "neg";
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${e.date}</td>
+        <td class="cp-name"><span class="dot" style="background:${p ? p.color : "#888"}"></span>${p ? p.name : e.platform}</td>
+        <td class="num muted">${e.hours}h @ ${hourLabel(e.startHour)}</td>
+        <td class="num muted">${fmt(e.predictedGross)}</td>
+        <td class="num">${fmt(e.actualGross)}</td>
+        <td class="num ${vcls}">${variance >= 0 ? "+" : "−"}${Math.abs(variance * 100).toFixed(0)}%</td>
+        <td><button class="btn-sm log-del" data-id="${e.id}" title="Delete">✕</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+  tbody.querySelectorAll(".log-del").forEach(btn => {
+    btn.addEventListener("click", () => { deleteLogEntry(btn.dataset.id); renderAll(); });
+  });
+
+  const f = state.calibrationFactor;
+  const summary = document.getElementById("calibration-summary");
+  if (summary) {
+    if (!state.earningsLog.length) {
+      summary.className = "plan-status";
+      summary.textContent = "Calibration: model running on baseline estimates (×1.00).";
+    } else {
+      const pct = Math.round(Math.abs(1 - f) * 100);
+      const dir = f < 1 ? "below" : "above";
+      summary.className = "plan-status ok";
+      summary.textContent = `Calibrated to your logs: your actual earnings run ${pct}% ${dir} the baseline model. All estimates now scaled ×${f.toFixed(2)}.`;
+    }
+  }
+}
+
+// ---------------- Shareable setup link ----------------
+
+function buildShareLink() {
+  const snapshot = serializeState();
+  const encoded = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(snapshot)))));
+  const base = location.href.split("#")[0];
+  return `${base}#s=${encoded}`;
+}
+
+function applyShareLink() {
+  const hash = location.hash;
+  if (!hash.startsWith("#s=")) return false;
+  try {
+    const json = decodeURIComponent(escape(atob(decodeURIComponent(hash.slice(3)))));
+    hydrateState(JSON.parse(json));
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 function populateVehicleMakes() {
@@ -756,9 +880,59 @@ function wireControls() {
   document.getElementById("export-csv").addEventListener("click", exportCSV);
   document.getElementById("export-ics").addEventListener("click", exportICS);
 
+  document.getElementById("log-add").addEventListener("click", () => {
+    const date = document.getElementById("log-date").value;
+    const platform = document.getElementById("log-platform").value;
+    const startHour = parseInt(document.getElementById("log-start").value, 10);
+    const hours = parseFloat(document.getElementById("log-hours").value);
+    const actualGross = parseFloat(document.getElementById("log-gross").value);
+    const err = document.getElementById("log-error");
+    if (!date || !platform || isNaN(startHour) || !(hours > 0) || !(actualGross >= 0)) {
+      err.textContent = "Enter date, platform, start hour, hours, and actual earnings.";
+      return;
+    }
+    err.textContent = "";
+    addLogEntry({ date, platform, startHour, hours, actualGross });
+    document.getElementById("log-gross").value = "";
+    document.getElementById("log-hours").value = "";
+    renderAll();
+  });
+
+  document.getElementById("share-link").addEventListener("click", async () => {
+    const url = buildShareLink();
+    history.replaceState(null, "", url);
+    const btn = document.getElementById("share-link");
+    const original = btn.textContent;
+    try {
+      await navigator.clipboard.writeText(url);
+      btn.textContent = "Link copied!";
+    } catch (e) {
+      btn.textContent = "Link in address bar";
+    }
+    setTimeout(() => { btn.textContent = original; }, 1800);
+  });
+
   document.getElementById("tier-toggle").addEventListener("click", () => {
     state.tier = state.tier === "pro" ? "free" : "pro"; renderAll();
   });
+}
+
+function populateLogPlatforms() {
+  const sel = document.getElementById("log-platform");
+  sel.innerHTML = "";
+  for (const [id, p] of Object.entries(PLATFORMS)) {
+    const opt = document.createElement("option");
+    opt.value = id; opt.textContent = p.name;
+    sel.appendChild(opt);
+  }
+  const start = document.getElementById("log-start");
+  start.innerHTML = "";
+  for (let h = 0; h < 24; h++) {
+    const opt = document.createElement("option");
+    opt.value = h; opt.textContent = hourLabel(h);
+    start.appendChild(opt);
+  }
+  start.value = "17";
 }
 
 function applyPlanMode() {
@@ -793,12 +967,16 @@ function applyStateToControls() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  loadState();
+  // A share link takes precedence over locally saved settings.
+  if (!applyShareLink()) loadState();
   renderMarketOptions();
   renderPlatformChoices();
   populateVehicleMakes();
   populateVehicleModels("");
   populateVehicleYears("", "");
+  populateLogPlatforms();
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById("log-date").value = today;
   document.getElementById("v-fuel").value = state.fuelPrice.toFixed(2);
   document.getElementById("v-mpg").value = state.mpg;
   applyStateToControls();

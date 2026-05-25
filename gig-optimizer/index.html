@@ -14,6 +14,7 @@
       <a href="../index.html" class="back-link" style="margin-left:16px">&larr; back to CV</a>
     </div>
     <div class="tier">
+      <button id="share-link" class="btn" title="Copy a link that restores this exact setup">Share setup</button>
       <span id="tier-label">Free Preview</span>
       <button id="tier-toggle" class="btn primary">Upgrade to Pro (Demo)</button>
     </div>
@@ -201,6 +202,31 @@
             <p>See ranked neighborhoods with live demand scores so you reposition before the surge, not after.</p>
             <button class="btn primary" onclick="document.getElementById('tier-toggle').click()">Try Pro (Demo)</button>
           </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Earnings Log &amp; Calibration</h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">
+          Log what you actually earned and the model learns your real numbers, scaling every estimate to match.
+        </p>
+        <div class="log-form">
+          <input id="log-date" type="date" aria-label="Date">
+          <select id="log-platform" aria-label="Platform"></select>
+          <select id="log-start" aria-label="Start hour"></select>
+          <input id="log-hours" type="number" min="0.5" max="24" step="0.5" placeholder="Hours" aria-label="Hours">
+          <input id="log-gross" type="number" min="0" step="1" placeholder="$ earned" aria-label="Actual gross earnings">
+          <button id="log-add" class="btn primary" type="button">Log it</button>
+        </div>
+        <div id="log-error" class="log-error"></div>
+        <div id="calibration-summary" class="plan-status"></div>
+        <div style="overflow-x:auto">
+          <table class="compare-table log-table">
+            <thead>
+              <tr><th>Date</th><th>Platform</th><th class="num">Session</th><th class="num">Predicted</th><th class="num">Actual</th><th class="num">Variance</th><th></th></tr>
+            </thead>
+            <tbody id="log-rows"></tbody>
+          </table>
         </div>
       </section>
     </main>

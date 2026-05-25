@@ -229,6 +229,27 @@ body.pro .tier #tier-label {
   display: block; height: 8px; border-radius: 4px; min-width: 2px;
 }
 
+.log-form {
+  display: grid;
+  grid-template-columns: 150px 1.2fr 100px 90px 110px auto;
+  gap: 8px; align-items: center; margin-bottom: 10px;
+}
+@media (max-width: 760px) { .log-form { grid-template-columns: 1fr 1fr; } }
+.log-form input, .log-form select {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); padding: 8px 10px;
+  border-radius: 8px; font-size: 14px; font-family: inherit; width: 100%;
+}
+.log-form .btn { white-space: nowrap; }
+.log-error { color: var(--warn); font-size: 13px; min-height: 18px; margin-bottom: 6px; }
+.log-table td { vertical-align: middle; }
+.log-table .log-del {
+  padding: 2px 8px; color: var(--muted); line-height: 1;
+}
+.log-table .log-del:hover { color: #f87171; border-color: #f87171; }
+.num.pos { color: var(--accent); }
+.num.neg { color: #f87171; }
+
 #now-card { padding: 16px; }
 .now-platform {
   display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center;
