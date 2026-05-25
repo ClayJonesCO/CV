@@ -117,4 +117,12 @@ trimming, and full per-driver deletion (`DELETE /sessions`, account deletion).
    `merge_driver()` folds an anonymous device into the existing account, and the
    client pulls + merges the account's sessions/expenses on sign-in.
 
-Remaining: referral conversion tracking and an analytics dashboard.
+4. ✅ **Referral conversion tracking + operator analytics** — `POST /referrals/click`
+   records a click and returns the affiliate URL stamped with a `subid`;
+   `POST /referrals/postback` (shared-secret auth) marks the conversion + payout
+   when the network calls back; `GET /admin/analytics` (admin-key auth) returns
+   usage + funnel metrics, rendered by the standalone `gig-optimizer/admin.html`
+   dashboard (live with a key, demo data otherwise).
+
+The full roadmap is now implemented in code; what's left is operational
+(provision Supabase, add real keys, swap example affiliate links).

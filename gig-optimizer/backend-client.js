@@ -69,6 +69,21 @@
     } catch (e) { /* ignore */ }
   }
 
+  // Record a bonus-link click; returns { url } with a tracking subid, or null.
+  async function trackReferralClick(platform, market) {
+    if (!enabled()) return null;
+    const token = await ensureToken();
+    if (!token) return null;
+    try {
+      const r = await fetch(`${apiBase()}/referrals/click`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "authorization": `Bearer ${token}` },
+        body: JSON.stringify({ platform, market }),
+      });
+      return r.ok ? await r.json() : null;
+    } catch (e) { return null; }
+  }
+
   // --- Phase 2: live forecast + events proxy ---
   // Returns { source, days:[{date,weatherKey,tempMax,tempMin,precip,event}] } or null.
   async function fetchForecast(market) {
@@ -119,7 +134,7 @@
   }
 
   window.PEAKR_API = {
-    enabled, ensureToken, fetchMarketModel, postSession, postExpense,
+    enabled, ensureToken, fetchMarketModel, postSession, postExpense, trackReferralClick,
     fetchForecast, me, requestEmailCode, verifyEmailCode, pullSessions, pullExpenses,
   };
 })();

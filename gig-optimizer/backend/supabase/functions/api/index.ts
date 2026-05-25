@@ -72,6 +72,28 @@ Deno.serve(async (req) => {
     return json((data ?? []).map((r) => ({ platform: r.platform, amount: r.amount_cents / 100, url: r.url, blurb: r.blurb })));
   }
 
+  // Affiliate conversion postback (called by the network when a driver signs up).
+  // Authenticated by a shared secret, not a device token.
+  if (req.method === "POST" && path === "/referrals/postback") {
+    if (req.headers.get("x-postback-secret") !== Deno.env.get("REFERRAL_POSTBACK_SECRET")) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const { subid, payout_cents } = await req.json();
+    const { error } = await db.from("referral_clicks")
+      .update({ converted_at: new Date().toISOString(), payout_cents: payout_cents ?? null })
+      .eq("subid", subid).is("converted_at", null);
+    return error ? json({ error: error.message }, 400) : json({ ok: true });
+  }
+
+  // Operator analytics (usage + referral funnel). Guarded by an admin key.
+  if (req.method === "GET" && path === "/admin/analytics") {
+    if (req.headers.get("x-admin-key") !== Deno.env.get("ADMIN_KEY")) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const { data, error } = await db.rpc("admin_analytics");
+    return error ? json({ error: error.message }, 500) : json(data);
+  }
+
   // 7-day weather + local events, proxied & cached server-side (keys hidden).
   if (req.method === "GET" && (path === "/forecast" || path === "/events")) {
     const market = url.searchParams.get("market");
@@ -94,6 +116,19 @@ Deno.serve(async (req) => {
   // ---- everything else needs a valid device token ----
   const driver_id = await driverFromToken(db, req);
   if (!driver_id) return json({ error: "unauthorized" }, 401);
+
+  // Record a bonus-link click and hand back the affiliate URL with our subid,
+  // so the eventual conversion postback can be attributed.
+  if (req.method === "POST" && path === "/referrals/click") {
+    const { platform, market } = await req.json();
+    const { data: ref } = await db.from("referrals").select("url")
+      .eq("platform", platform).eq("active", true).in("market", [market ?? "*", "*"]).limit(1).maybeSingle();
+    if (!ref) return json({ error: "no offer" }, 404);
+    const { data: click } = await db.from("referral_clicks")
+      .insert({ driver_id, platform, market }).select("subid").single();
+    const sep = ref.url.includes("?") ? "&" : "?";
+    return json({ url: `${ref.url}${sep}subid=${click.subid}` }, 201);
+  }
 
   // Who am I (for showing signed-in state across devices)?
   if (req.method === "GET" && path === "/me") {

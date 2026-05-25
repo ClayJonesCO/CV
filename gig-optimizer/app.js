@@ -540,7 +540,13 @@ function renderBonuses() {
       </div>
       <a class="bonus-amt" href="#" role="button" title="Example referral offer (placeholder link)">$${c.ref.amount}</a>
     `;
-    el.querySelector("a").addEventListener("click", e => e.preventDefault());
+    el.querySelector("a").addEventListener("click", async e => {
+      e.preventDefault();
+      if (API && API.enabled()) {
+        const res = await API.trackReferralClick(c.id, state.market);   // records click + attributes conversion
+        if (res && res.url) window.open(res.url, "_blank", "noopener");
+      }
+    });
     wrap.appendChild(el);
   }
   const ctx = document.getElementById("bonus-context");
