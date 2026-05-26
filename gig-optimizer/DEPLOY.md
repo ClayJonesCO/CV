@@ -50,9 +50,11 @@ supabase functions deploy scan-surges
 ## 2. Backend — scheduled jobs
 
 1. Enable **pg_cron** and **pg_net** (Dashboard → Database → Extensions).
-2. Edit `supabase/migrations/0002_schedules.sql`: set `<PROJECT_REF>` and the
-   service-role bearer in the `scan-surges` HTTP call.
-3. `supabase db push` to apply it. (Hourly model rebuild + 15-min surge scan.)
+2. Edit `supabase/scheduling.sql`: set `<PROJECT_REF>` and the service-role
+   bearer in the `scan-surges` HTTP call.
+3. Run `supabase/scheduling.sql` in the Dashboard SQL editor (it is intentionally
+   NOT in `migrations/`, so `db push` never runs it). Hourly model rebuild +
+   15-min surge scan.
 
 ## 3. Monetization wiring
 
