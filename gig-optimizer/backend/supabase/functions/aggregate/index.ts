@@ -1,6 +1,6 @@
 // aggregate — scheduled rebuild of the community model (also callable manually).
 // Pure DB work; the SQL functions do the heavy lifting. Scheduling lives in
-// 0002_schedules.sql (pg_cron calls the SQL directly), but exposing it as a
+// supabase/scheduling.sql (pg_cron calls the SQL directly), but exposing it as a
 // function is handy for manual re-runs and local testing.
 import { admin, json } from "../_shared/util.ts";
 

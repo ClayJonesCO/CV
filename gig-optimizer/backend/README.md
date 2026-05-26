@@ -20,9 +20,12 @@ backend/
   openapi.yaml              ← REST contract
   .env.example              ← Edge Function secrets
   supabase/
+    config.toml             ← project + verify_jwt=false (functions self-auth)
+    scheduling.sql          ← pg_cron jobs; applied BY HAND after deploy (not a migration)
     migrations/
       0001_init.sql         ← schema, aggregation + surge SQL, RLS, seed
-      0002_schedules.sql    ← pg_cron jobs (run after enabling pg_cron/pg_net)
+      0003_phase23.sql      ← markets, email accounts, merge_driver()
+      0004_referral_tracking.sql ← click→conversion tracking, admin_analytics()
     functions/
       _shared/util.ts       ← CORS, admin client, token→driver resolver, sha256
       _shared/feeds.ts      ← Open-Meteo + Ticketmaster fetch/cache (Phase 2)
@@ -75,9 +78,9 @@ supabase functions deploy api
 supabase functions deploy aggregate
 supabase functions deploy scan-surges
 
-# 4. Schedules: enable pg_cron + pg_net (Dashboard → Database → Extensions),
-#    edit 0002_schedules.sql with your project ref + service-role key, then:
-supabase db push                      # applies migrations/0002_schedules.sql
+# 4. Schedules (run by hand AFTER deploy — not a migration): enable pg_cron +
+#    pg_net (Dashboard → Database → Extensions), edit supabase/scheduling.sql
+#    with your project ref + service-role key, then run it in the SQL editor.
 ```
 
 Your API base is then `https://<PROJECT_REF>.functions.supabase.co/api`.

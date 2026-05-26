@@ -1,6 +1,8 @@
--- Scheduled jobs. Requires the pg_cron and pg_net extensions, which on Supabase
--- are enabled from Dashboard → Database → Extensions (or the statements below).
--- Run this migration AFTER those extensions are enabled.
+-- Scheduled jobs. NOT a migration — kept out of supabase/migrations on purpose
+-- so `supabase db push` does not run it. Apply by hand (Dashboard SQL editor or
+-- psql) AFTER the backend is deployed: it needs pg_cron + pg_net enabled and the
+-- placeholders below substituted. On Supabase, enable the extensions from
+-- Dashboard → Database → Extensions (or via the statements below).
 --
 -- Replace <PROJECT_REF> and the service-role bearer with your project's values,
 -- or store them in Vault and reference them. The aggregation job is pure SQL so

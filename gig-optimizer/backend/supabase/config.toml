@@ -1,0 +1,17 @@
+# Supabase project config for Peakr.
+# project_id is the local dev name; `supabase link --project-ref <ref>` sets the
+# real remote target at deploy time.
+project_id = "peakr"
+
+# These functions authenticate themselves (opaque device tokens, an admin key,
+# and a postback secret) and expose public reads, so the platform's default
+# Supabase-JWT gate must be OFF — otherwise every request 401s before reaching
+# our handler.
+[functions.api]
+verify_jwt = false
+
+[functions.aggregate]
+verify_jwt = false
+
+[functions.scan-surges]
+verify_jwt = false
