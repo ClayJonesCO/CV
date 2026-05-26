@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peakr — Gig Economy Income Optimizer</title>
+  <meta name="theme-color" content="#0b0d12">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">P</div>
+      Peakr
+      <a href="../index.html" class="back-link" style="margin-left:16px">&larr; back to CV</a>
+    </div>
+    <div class="tier">
+      <div id="account" class="account" style="display:none">
+        <button id="account-btn" class="btn" title="Sign in with email to sync your log across devices">☁ Sync</button>
+        <div id="account-panel" class="account-panel" hidden>
+          <div id="account-signedout">
+            <div class="muted" style="font-size:12px;margin-bottom:6px">Sync your log &amp; expenses across devices.</div>
+            <div class="account-row">
+              <input id="account-email" type="email" placeholder="you@email.com">
+              <button id="account-send" class="btn" type="button">Send code</button>
+            </div>
+            <div id="account-code-row" class="account-row" hidden>
+              <input id="account-code" inputmode="numeric" placeholder="6-digit code">
+              <button id="account-verify" class="btn primary" type="button">Verify</button>
+            </div>
+            <div id="account-msg" class="muted" style="font-size:12px;margin-top:6px"></div>
+          </div>
+          <div id="account-signedin" hidden>
+            <span class="muted" style="font-size:13px">☁ Synced as <strong id="account-email-label"></strong></span>
+          </div>
+        </div>
+      </div>
+      <button id="alerts-toggle" class="btn" title="Get a heads-up when a surge window is about to start (while Peakr is open)">🔔 Surge alerts</button>
+      <button id="share-link" class="btn" title="Copy a link that restores this exact setup">Share setup</button>
+      <span id="tier-label">Free Preview</span>
+      <button id="tier-toggle" class="btn primary">Upgrade to Pro (Demo)</button>
+    </div>
+  </header>
+
+  <div id="intro" class="intro">
+    <div class="steps">
+      <div class="step"><span class="num">1</span><span><b>Set up once</b> <span class="muted">— your city, car & apps (we remember it)</span></span></div>
+      <span class="arrow">→</span>
+      <div class="step"><span class="num">2</span><span><b>See your plan</b> <span class="muted">— when, where & which app to drive</span></span></div>
+      <span class="arrow">→</span>
+      <div class="step"><span class="num">3</span><span><b>Log what you earn</b> <span class="muted">— the plan sharpens to your real pay</span></span></div>
+    </div>
+    <button id="intro-dismiss" class="intro-dismiss" type="button">Got it</button>
+  </div>
+
+  <div class="layout">
+    <aside class="panel">
+      <h2>Driver Profile</h2>
+      <div class="sidebar-hint">Fill these in once. Everything on the right updates instantly as you change them.</div>
+
+      <div class="control">
+        <label for="market">Market</label>
+        <select id="market"></select>
+      </div>
+
+      <div class="control">
+        <label>Apps you can drive for</label>
+        <div id="platforms"></div>
+      </div>
+
+      <div class="control">
+        <label>Vehicle</label>
+        <div class="vehicle-grid">
+          <select id="v-make" aria-label="Make"></select>
+          <select id="v-model" aria-label="Model" disabled></select>
+          <select id="v-year" aria-label="Year" disabled></select>
+        </div>
+        <div class="mpg-row">
+          <span class="mpg-label">Estimated MPG</span>
+          <input id="v-mpg" type="number" min="5" max="150" step="1" value="26">
+          <span id="v-mpg-source" class="hint">manual</span>
+        </div>
+        <div class="hint">EPA combined rating. Override the value if your real-world MPG differs.</div>
+      </div>
+
+      <div class="control">
+        <label for="v-fuel">Last fuel price ($/gal)</label>
+        <div class="fuel-row">
+          <span class="fuel-prefix">$</span>
+          <input id="v-fuel" type="number" min="0.50" max="15" step="0.01" value="3.50">
+          <button id="v-fuel-reset" class="btn-sm" type="button" title="Use market average">↻</button>
+        </div>
+        <div class="hint">Used directly in the per-hour fuel cost calculation.</div>
+      </div>
+
+      <div class="control">
+        <label for="tax-rate">Est. federal income tax bracket</label>
+        <select id="tax-rate">
+          <option value="0">0% — below filing threshold</option>
+          <option value="0.10">10%</option>
+          <option value="0.12" selected>12%</option>
+          <option value="0.22">22%</option>
+          <option value="0.24">24%</option>
+        </select>
+        <div class="hint">Drives the after-tax take-home estimate. Not tax advice.</div>
+      </div>
+
+      <div class="control">
+        <label>Plan by</label>
+        <div class="seg" id="plan-mode">
+          <button type="button" class="seg-btn active" data-mode="hours">Hours / week</button>
+          <button type="button" class="seg-btn" data-mode="goal">Income goal</button>
+        </div>
+        <div id="plan-hours" style="margin-top:10px">
+          <label for="hours" style="text-transform:none;letter-spacing:0;color:var(--text)">Target hours: <span id="hours-val"></span></label>
+          <input id="hours" type="range" min="5" max="60" value="30" step="1">
+        </div>
+        <div id="plan-goal" style="margin-top:10px;display:none">
+          <label for="income-goal" style="text-transform:none;letter-spacing:0;color:var(--text)">Weekly take-home target</label>
+          <div class="fuel-row">
+            <span class="fuel-prefix">$</span>
+            <input id="income-goal" type="number" min="50" max="10000" step="50" value="1000">
+          </div>
+          <div class="hint">Fewest hours needed to hit this after-tax income.</div>
+        </div>
+      </div>
+
+      <h2 style="margin-top:24px">Live Conditions</h2>
+
+      <div class="control">
+        <label for="weather">Weather</label>
+        <select id="weather">
+          <option value="clear">Clear</option>
+          <option value="cloudy">Cloudy</option>
+          <option value="rain">Rain</option>
+          <option value="storm">Storm</option>
+          <option value="snow">Snow</option>
+          <option value="hot">Heatwave</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="event">Local event</label>
+        <select id="event">
+          <option value="none">None</option>
+          <option value="concert">Concert</option>
+          <option value="sports">Sports game</option>
+          <option value="convention">Convention</option>
+          <option value="holiday">Holiday</option>
+        </select>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="panel" id="now-panel">
+        <h2>Your Best Move Right Now</h2>
+        <div id="now-card"></div>
+      </section>
+
+      <section class="panel">
+        <h2>7-Day Outlook <span class="muted" id="forecast-source" style="text-transform:none;letter-spacing:0;font-weight:400">loading…</span></h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">
+          Weather-aware projection of the best app and estimated earnings per day, including known local events. Uplift is vs. a clear day with no event.
+        </p>
+        <div id="outlook-strip" class="outlook-strip"></div>
+      </section>
+
+      <section class="panel">
+        <h2>All Your Apps, Ranked for This Hour <span class="muted" id="compare-context" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+        <table class="compare-table">
+          <thead>
+            <tr><th>App</th><th></th><th class="num">Net/hr</th><th class="num">Gross/hr</th><th class="num">Demand<span class="info" tabindex="0" role="note" aria-label="How busy it is vs an average hour. 2x means twice the normal number of jobs/rides.">?<span class="tip">How busy it is vs. an average hour. 2× = twice the usual jobs.</span></span></th></tr>
+          </thead>
+          <tbody id="compare-rows"></tbody>
+        </table>
+      </section>
+
+      <section class="panel" id="bonus-panel">
+        <h2>Sign-Up Bonuses <span class="muted" id="bonus-context" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">
+          Not driving an app yet that's hot in your area? New-driver bonuses you can grab. <span title="In production these are paid referral/affiliate programs — how Peakr can stay free for drivers.">Example offers.</span>
+        </p>
+        <div id="bonus-list" class="bonus-list"></div>
+      </section>
+
+      <section class="kpis">
+        <div class="kpi"><div class="label">Weekly Hours</div><div class="val" id="summary-hours">0h</div><div class="sublabel">time behind the wheel</div></div>
+        <div class="kpi hi"><div class="label">Weekly Net<span class="info" tabindex="0" role="note" aria-label="What platforms pay you, minus gas and car wear. Before taxes.">?<span class="tip">What the apps pay you, minus gas &amp; car wear — before taxes.</span></span></div><div class="val" id="summary-net">$0</div><div class="sublabel">after gas &amp; car costs</div></div>
+        <div class="kpi"><div class="label">Weekly Gross<span class="info" tabindex="0" role="note" aria-label="Total the apps pay you, before any costs.">?<span class="tip">Total the apps pay you, before any costs are taken out.</span></span></div><div class="val" id="summary-gross">$0</div><div class="sublabel">before any costs</div></div>
+        <div class="kpi"><div class="label">Avg / hour</div><div class="val" id="summary-avg">$0/hr</div><div class="sublabel">net pay per hour worked</div></div>
+        <div class="kpi"><div class="label">Projected Annual</div><div class="val" id="summary-annual">$0</div><div class="sublabel">if you drove this every week</div></div>
+      </section>
+
+      <section class="panel">
+        <h2>What You Actually Keep <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· per week, after costs &amp; taxes</span></h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">
+          Gig drivers are self-employed, so you cover your own gas, car wear, and taxes. Here's the real money left over.
+        </p>
+        <div class="breakdown">
+          <table class="breakdown-table">
+            <tbody id="breakdown-rows"></tbody>
+          </table>
+          <div class="takehome">
+            <div class="th-label">Weekly take-home<span class="info" tabindex="0" role="note" aria-label="The money left in your pocket after gas, car wear, and estimated taxes.">?<span class="tip">The money truly left in your pocket after gas, car wear &amp; estimated taxes.</span></span></div>
+            <div class="th-val" id="breakdown-takehome">$0</div>
+            <div class="muted" id="breakdown-effhourly">$0/hr take-home</div>
+            <div class="muted" id="breakdown-takehome-annual">$0 / yr</div>
+            <div class="th-meta">
+              <span id="breakdown-miles">0 mi/wk</span>
+              <span class="muted" id="breakdown-deduction">$0 mileage deduction</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>When to Drive This Week</h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">
+          Every hour of the week, color-coded by the best app to run. Brighter = more money. Hover any square for details.
+        </p>
+        <div style="overflow-x:auto">
+          <table id="heatmap"></table>
+        </div>
+      </section>
+
+      <section class="grid-2">
+        <div class="panel locked-container">
+          <div class="panel-head">
+            <h2>Your Optimized Schedule</h2>
+            <div class="export-btns">
+              <button id="export-csv" class="btn-sm" type="button" title="Download as CSV">CSV</button>
+              <button id="export-ics" class="btn-sm" type="button" title="Add to calendar">Calendar</button>
+            </div>
+          </div>
+          <p class="muted" style="font-size:13px;margin:0 0 8px">
+            The most profitable hours, ranked and grouped into shifts.
+          </p>
+          <div id="plan-status" class="plan-status"></div>
+          <div id="schedule"></div>
+          <div class="pro-lock">
+            <div class="lock-icon">🔒</div>
+            <h4>Full schedule is a Pro feature</h4>
+            <p>Pro subscribers get a personalized weekly schedule, exportable to calendar, plus daily push alerts when surge windows open.</p>
+            <button class="btn primary" onclick="document.getElementById('tier-toggle').click()">Try Pro (Demo)</button>
+          </div>
+        </div>
+
+        <div class="panel locked-container">
+          <h2>Top Hot Zones</h2>
+          <p class="muted" style="font-size:13px;margin:0 0 12px" id="zones-context"></p>
+          <ul id="zones"></ul>
+          <div class="pro-lock">
+            <div class="lock-icon">📍</div>
+            <h4>Hot-zone targeting is Pro</h4>
+            <p>See ranked neighborhoods with live demand scores so you reposition before the surge, not after.</p>
+            <button class="btn primary" onclick="document.getElementById('tier-toggle').click()">Try Pro (Demo)</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Earnings Log &amp; Calibration</h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">
+          Log what you actually earned and the model learns your real numbers, scaling every estimate to match.
+        </p>
+
+        <details class="paste-box">
+          <summary>⚡ Paste your app's weekly summary instead of typing</summary>
+          <p class="muted" style="font-size:12px;margin:8px 0">
+            Copy the earnings summary from your Uber/DoorDash/etc. app or email and paste it here — we'll pull out the date, total, and hours.
+          </p>
+          <textarea id="paste-input" rows="3" placeholder="e.g.  DoorDash — week of 5/18  •  $312.50  •  14.5 hours  •  22 deliveries"></textarea>
+          <div class="paste-actions">
+            <button id="paste-parse" class="btn" type="button">Parse &amp; fill the form</button>
+            <span id="paste-result" class="muted" style="font-size:12px"></span>
+          </div>
+        </details>
+
+        <div class="log-form">
+          <input id="log-date" type="date" aria-label="Date">
+          <select id="log-platform" aria-label="Platform"></select>
+          <select id="log-start" aria-label="Start hour"></select>
+          <input id="log-hours" type="number" min="0.5" max="24" step="0.5" placeholder="Hours" aria-label="Hours">
+          <input id="log-gross" type="number" min="0" step="1" placeholder="$ earned" aria-label="Actual gross earnings">
+          <button id="log-add" class="btn primary" type="button">Log it</button>
+        </div>
+        <div id="log-error" class="log-error"></div>
+        <div id="calibration-summary" class="plan-status"></div>
+
+        <div class="trend-block">
+          <div class="trend-head">
+            <h3 style="margin:0;font-size:15px">Week-over-Week Trend</h3>
+            <span class="muted" id="trend-note" style="font-size:13px"></span>
+          </div>
+          <div id="trend-bars" class="trend-bars"></div>
+        </div>
+
+        <div style="overflow-x:auto">
+          <table class="compare-table log-table">
+            <thead>
+              <tr><th>Date</th><th>Platform</th><th class="num">Session</th><th class="num">Predicted</th><th class="num">Actual</th><th class="num">Variance</th><th></th></tr>
+            </thead>
+            <tbody id="log-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Mileage &amp; Tax Tracker <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· this year, for your Schedule C</span></h2>
+        <p class="muted" style="font-size:13px;margin:0 0 14px">
+          The IRS lets you deduct either a flat rate per business mile <em>or</em> your actual car expenses — whichever saves more. We track both and pick the winner.
+        </p>
+        <div class="tt-grid">
+          <div class="tt-methods">
+            <div id="tt-standard-row" class="tt-method">
+              <div>
+                <div class="tt-mname">Standard mileage<span class="info" tabindex="0" role="note" aria-label="IRS flat rate per business mile driven. Covers gas, wear, and depreciation in one number.">?<span class="tip">A flat IRS rate per business mile — covers gas, wear &amp; depreciation in one number.</span></span></div>
+                <div class="muted" style="font-size:12px"><span id="tt-miles">0 mi</span> driven this year</div>
+              </div>
+              <div class="tt-mval" id="tt-standard">$0</div>
+            </div>
+            <div id="tt-actual-row" class="tt-method">
+              <div>
+                <div class="tt-mname">Actual expenses<span class="info" tabindex="0" role="note" aria-label="Add up your real car costs: gas, maintenance, insurance, phone, etc.">?<span class="tip">Your real car costs added up: gas, maintenance, insurance, phone, tolls.</span></span></div>
+                <div class="muted" style="font-size:12px">from your logged expenses below</div>
+              </div>
+              <div class="tt-mval" id="tt-actual">$0</div>
+            </div>
+          </div>
+          <div class="tt-result">
+            <div class="th-label">Use the <strong id="tt-method">—</strong> method</div>
+            <div class="th-val" id="tt-deduction">$0</div>
+            <div class="muted">deduction this year</div>
+            <div class="th-meta">
+              <span>Est. tax saved: <strong id="tt-savings">$0</strong></span>
+            </div>
+          </div>
+        </div>
+        <div class="log-form expense-form">
+          <input id="exp-date" type="date" aria-label="Expense date">
+          <select id="exp-category" aria-label="Category"></select>
+          <input id="exp-amount" type="number" min="0" step="0.01" placeholder="$ amount" aria-label="Amount">
+          <button id="exp-add" class="btn primary" type="button">Add expense</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="compare-table">
+            <thead><tr><th>Date</th><th>Category</th><th class="num">Amount</th><th></th></tr></thead>
+            <tbody id="expense-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="disclaimer">
+    <strong>About this prototype.</strong>
+    Peakr's recommendations come from a transparent earnings model: published platform pay structures, hour-of-week demand curves
+    from rideshare/delivery research, plus weather and event modifiers. Major gig platforms (Uber, DoorDash, Lyft, Instacart, etc.) do
+    not expose public APIs for live earnings or zone demand, so this prototype simulates those inputs rather than scraping carrier accounts.
+    The community data layer, sign-up bonuses, and the forecast's live feed are seeded/simulated here; production would pool anonymized
+    driver-reported earnings on a backend (the data flywheel), use real affiliate/referral programs, and add opt-in trip telemetry and
+    licensed traffic/event feeds. Logging is advisory and driver-sourced — Peakr never automates or scrapes platform accounts.
+    <br><a href="admin.html" class="back-link">Operator analytics &rarr;</a>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="vehicles.js"></script>
+  <script src="community.js"></script>
+  <script src="backend-client.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

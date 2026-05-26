@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peakr — Operator Analytics</title>
+  <meta name="theme-color" content="#0b0d12">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">P</div>
+      Peakr <span class="muted" style="font-weight:400">Operator Analytics</span>
+      <a href="index.html" class="back-link" style="margin-left:16px">&larr; back to app</a>
+    </div>
+    <div class="tier">
+      <input id="admin-key" type="password" placeholder="admin key" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px">
+      <button id="admin-refresh" class="btn primary" type="button">Load</button>
+    </div>
+  </header>
+
+  <div style="max-width:1200px;margin:0 auto;padding:24px 28px">
+    <div id="admin-banner" class="plan-status" style="margin-bottom:18px"></div>
+
+    <section class="kpis" id="admin-kpis" style="margin-bottom:20px"></section>
+
+    <div class="grid-2">
+      <section class="panel">
+        <h2>Referral Funnel by App</h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">Clicks → sign-ups → bonus revenue (how Peakr earns).</p>
+        <table class="compare-table">
+          <thead><tr><th>App</th><th class="num">Clicks</th><th class="num">Conversions</th><th class="num">Rate</th><th class="num">Revenue</th></tr></thead>
+          <tbody id="admin-platforms"></tbody>
+        </table>
+      </section>
+
+      <section class="panel">
+        <h2>Top Markets by Activity</h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">Logged sessions feeding the demand flywheel.</p>
+        <table class="compare-table">
+          <thead><tr><th>Market</th><th class="num">Sessions</th><th class="num">Drivers</th></tr></thead>
+          <tbody id="admin-markets"></tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+
+  <script src="backend-client.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>
