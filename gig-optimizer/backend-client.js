@@ -133,8 +133,24 @@
     return rows.map((r) => ({ id: r.id, date: r.spent_on, category: r.category, amount: r.amount_cents / 100 }));
   }
 
+  // --- Billing (Stripe Checkout + Customer Portal) ---
+  // Returns { url } to redirect to, or null on failure / not configured.
+  async function startCheckout() {
+    return authed("/billing/checkout", {
+      method: "POST",
+      body: JSON.stringify({ return_url: location.href.split("?")[0] }),
+    });
+  }
+  async function openBillingPortal() {
+    return authed("/billing/portal", {
+      method: "POST",
+      body: JSON.stringify({ return_url: location.href.split("?")[0] }),
+    });
+  }
+
   window.PEAKR_API = {
     enabled, ensureToken, fetchMarketModel, postSession, postExpense, trackReferralClick,
     fetchForecast, me, requestEmailCode, verifyEmailCode, pullSessions, pullExpenses,
+    startCheckout, openBillingPortal,
   };
 })();
