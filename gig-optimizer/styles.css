@@ -38,14 +38,7 @@ body {
   display: flex; align-items: center; gap: 12px;
   font-size: 13px;
 }
-.tier #tier-label {
-  padding: 4px 10px; border-radius: 999px;
-  background: var(--panel-2); border: 1px solid var(--border);
-}
-body.pro .tier #tier-label {
-  background: linear-gradient(90deg, rgba(74,222,128,0.2), rgba(34,211,238,0.2));
-  border-color: var(--accent);
-}
+/* Tier badge styling lives further down under .tier-badge {free,trial,pro} */
 .btn {
   background: var(--panel-2); color: var(--text);
   border: 1px solid var(--border); padding: 8px 14px;
@@ -525,4 +518,84 @@ body.pro .tier #tier-label {
 .sidebar-hint {
   font-size: 12px; color: var(--muted); margin: -4px 0 14px;
   padding: 8px 10px; background: var(--panel-2); border-radius: 8px; border: 1px solid var(--border);
+}
+
+/* ---- Tier badge + paywall + recap (monetization) ---- */
+.tier-badge {
+  padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--panel-2);
+}
+.tier-badge.free { color: var(--muted); }
+.tier-badge.trial {
+  border-color: var(--accent-2); color: var(--accent-2);
+  background: rgba(34,211,238,0.10);
+}
+.tier-badge.pro {
+  border: none; color: #0b0d12; font-weight: 800;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(11,13,18,0.78); backdrop-filter: blur(6px);
+  display: flex; align-items: flex-start; justify-content: center; z-index: 200;
+  padding: 32px 20px; overflow-y: auto;
+}
+.modal-overlay[hidden] { display: none; }
+.modal {
+  position: relative; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 16px; padding: 28px; max-width: 920px; width: 100%;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+}
+.modal h2 { margin: 0 0 6px; font-size: 22px; }
+.modal-close {
+  position: absolute; top: 12px; right: 14px; width: 32px; height: 32px;
+  background: transparent; color: var(--muted); border: none; border-radius: 50%;
+  font-size: 22px; cursor: pointer; line-height: 1;
+}
+.modal-close:hover { color: var(--text); background: var(--panel-2); }
+
+.plans-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 20px;
+}
+@media (max-width: 800px) { .plans-grid { grid-template-columns: 1fr; } }
+.plan-card {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px; display: flex; flex-direction: column; gap: 10px;
+}
+.plan-card.accent {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(74,222,128,0.10), var(--panel-2));
+}
+.plan-card h3 { margin: 0; font-size: 18px; }
+.plan-tag {
+  align-self: flex-start; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 3px 8px; border-radius: 999px; background: var(--panel); color: var(--muted);
+  border: 1px solid var(--border);
+}
+.plan-tag.accent {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: #0b0d12; border: none;
+}
+.plan-price { font-size: 26px; font-weight: 800; }
+.plan-price .muted { font-size: 14px; font-weight: 400; }
+.plan-features { list-style: none; padding: 0; margin: 0; font-size: 13px; line-height: 1.6; }
+.plan-features li::before { content: "✓ "; color: var(--accent); font-weight: 700; }
+.plan-cta { margin-top: auto; }
+.plan-fine { font-size: 11px; margin-top: 2px; }
+
+.recap-modal { max-width: 640px; }
+.recap-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px;
+}
+@media (max-width: 600px) { .recap-stats { grid-template-columns: repeat(2, 1fr); } }
+.recap-stat {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+}
+.recap-stat .label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+}
+.recap-stat .val { font-size: 22px; font-weight: 700; margin-top: 4px; }
+.recap-actions {
+  display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; justify-content: flex-end;
 }

@@ -40,8 +40,9 @@
       </div>
       <button id="alerts-toggle" class="btn" title="Get a heads-up when a surge window is about to start (while Peakr is open)">🔔 Surge alerts</button>
       <button id="share-link" class="btn" title="Copy a link that restores this exact setup">Share setup</button>
-      <span id="tier-label">Free Preview</span>
-      <button id="tier-toggle" class="btn primary">Upgrade to Pro (Demo)</button>
+      <span id="tier-label" class="tier-badge free">Free</span>
+      <button id="plans-btn" class="btn primary">Plans</button>
+      <button id="tier-toggle" hidden aria-hidden="true"></button>
     </div>
   </header>
 
@@ -365,6 +366,71 @@
     licensed traffic/event feeds. Logging is advisory and driver-sourced — Peakr never automates or scrapes platform accounts.
     <br><a href="admin.html" class="back-link">Operator analytics &rarr;</a>
   </footer>
+
+  <div id="paywall" class="modal-overlay" hidden>
+    <div class="modal paywall-modal" role="dialog" aria-labelledby="paywall-headline">
+      <button id="paywall-close" class="modal-close" aria-label="Close">×</button>
+      <h2 id="paywall-headline">Get the full Peakr</h2>
+      <p id="paywall-sub" class="muted">Pick the path that works for you.</p>
+      <div class="plans-grid">
+        <div class="plan-card">
+          <div class="plan-tag">Easiest</div>
+          <h3>14-day trial</h3>
+          <div class="plan-price">Free<span class="muted"> · no card</span></div>
+          <ul class="plan-features">
+            <li>Full schedule + hot zones</li>
+            <li>Surge push alerts</li>
+            <li>CSV / calendar export</li>
+            <li>Income goal planner</li>
+          </ul>
+          <button id="trial-start" class="btn primary plan-cta">Start free trial</button>
+          <div class="plan-fine muted">No credit card. We'll show what Peakr was worth at day 14.</div>
+        </div>
+        <div class="plan-card">
+          <h3>Pro</h3>
+          <div class="plan-price">$9<span class="muted"> / month</span></div>
+          <ul class="plan-features">
+            <li>Everything in trial</li>
+            <li>Cancel anytime, one click</li>
+            <li>14-day money-back guarantee</li>
+          </ul>
+          <button id="pro-buy" class="btn plan-cta">Upgrade — $9/mo</button>
+          <div class="plan-fine muted">Pre-billing reminder 3 days before each renewal.</div>
+        </div>
+        <div class="plan-card accent">
+          <div class="plan-tag accent">Pro on us</div>
+          <h3>Sign-up bonus</h3>
+          <div class="plan-price">$0<span class="muted"> via referral</span></div>
+          <ul class="plan-features">
+            <li>Sign up for an app you don't drive yet</li>
+            <li>Pro activates when your bonus pays out</li>
+            <li>You keep the bonus + get Pro free</li>
+          </ul>
+          <button id="referral-show" class="btn plan-cta">See bonuses</button>
+          <div class="plan-fine muted">We earn the affiliate; you keep the cash.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="recap" class="modal-overlay" hidden>
+    <div class="modal recap-modal" role="dialog" aria-labelledby="recap-headline">
+      <h2 id="recap-headline">Your 14-day Peakr recap</h2>
+      <p class="muted">Here's what the model learned about your earnings.</p>
+      <div class="recap-stats">
+        <div class="recap-stat"><div class="label">Sessions logged</div><div class="val" id="recap-sessions">0</div></div>
+        <div class="recap-stat"><div class="label">Total earned</div><div class="val" id="recap-earned">$0</div></div>
+        <div class="recap-stat"><div class="label">Calibration</div><div class="val" id="recap-calibration">×1.00</div></div>
+        <div class="recap-stat"><div class="label">Projected weekly</div><div class="val" id="recap-projected">$0</div></div>
+      </div>
+      <p id="recap-cta-msg" class="muted" style="margin-top:14px"></p>
+      <div class="recap-actions">
+        <button id="recap-continue-free" class="btn">Continue free</button>
+        <button id="recap-referral" class="btn">Free via a bonus</button>
+        <button id="recap-upgrade" class="btn primary">Upgrade — $9/mo</button>
+      </div>
+    </div>
+  </div>
 
   <script src="data.js"></script>
   <script src="vehicles.js"></script>

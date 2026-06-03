@@ -18,6 +18,10 @@ const SE_TAX_RATE = 0.153;       // Social Security + Medicare
 const SE_TAXABLE_PORTION = 0.9235;
 const VEHICLE_WEAR_RATE = 0.09;  // non-fuel operating cost proxy ($/mi)
 
+// Monetization
+const TRIAL_DAYS = 14;
+const PRO_PRICE = 9;
+
 const state = {
   market: "nash",
   weather: "clear",
@@ -39,7 +43,10 @@ const state = {
   expenses: [],             // [{ id, date, category, amount }]
   calibrationFactor: 1.0,   // derived: total actual / total predicted across the log
   forecast: [],             // 7-day outlook: [{ date, weatherKey, tempMax, tempMin, precip, event, live }]
-  tier: "free",
+  tier: "free",             // "free" | "trial" | "pro"
+  proSource: null,          // null | "paid" | "referral"
+  trialStartedAt: null,     // ISO date string
+  trialRecapDismissed: false,
 };
 
 const EXPENSE_CATEGORIES = ["Gas", "Maintenance", "Phone & data", "Supplies", "Tolls & parking", "Insurance", "Other"];
@@ -553,14 +560,150 @@ function renderBonuses() {
   if (ctx) ctx.textContent = `· ${MARKETS[state.market].name}`;
 }
 
+// ---------------- Monetization tier ----------------
+
+// Days remaining in the user's free trial. Floors at 0 once expired.
+function trialDaysLeft() {
+  if (!state.trialStartedAt) return 0;
+  const started = new Date(state.trialStartedAt).getTime();
+  const elapsedDays = (Date.now() - started) / (1000 * 60 * 60 * 24);
+  return Math.max(0, Math.ceil(TRIAL_DAYS - elapsedDays));
+}
+
+// Effective tier with trial expiry baked in.
+function effectiveTier() {
+  if (state.tier === "pro") return "pro";
+  if (state.tier === "trial" && trialDaysLeft() > 0) return "trial";
+  return "free";
+}
+
+function isPro() {
+  const t = effectiveTier();
+  return t === "pro" || t === "trial";
+}
+
 function renderTier() {
-  const isPro = state.tier === "pro";
-  document.body.classList.toggle("pro", isPro);
+  const t = effectiveTier();
+  document.body.classList.toggle("pro", isPro());
   document.querySelectorAll(".pro-lock").forEach(el => {
-    el.style.display = isPro ? "none" : "flex";
+    el.style.display = isPro() ? "none" : "flex";
   });
-  document.getElementById("tier-label").textContent = isPro ? "Pro Subscriber" : "Free Preview";
-  document.getElementById("tier-toggle").textContent = isPro ? "Switch to Free" : "Upgrade to Pro (Demo)";
+  const label = document.getElementById("tier-label");
+  if (t === "pro") {
+    label.textContent = state.proSource === "referral" ? "Pro · referral" : "Pro";
+    label.className = "tier-badge pro";
+  } else if (t === "trial") {
+    const d = trialDaysLeft();
+    label.textContent = `Trial · ${d} day${d === 1 ? "" : "s"} left`;
+    label.className = "tier-badge trial";
+  } else {
+    label.textContent = "Free";
+    label.className = "tier-badge free";
+  }
+  const plansBtn = document.getElementById("plans-btn");
+  if (plansBtn) plansBtn.textContent = t === "pro" ? "Manage plan" : "Plans";
+  // Legacy demo shortcut (kept hidden for backward-compatible test hooks).
+  const legacy = document.getElementById("tier-toggle");
+  if (legacy) legacy.textContent = isPro() ? "Switch to Free" : "Upgrade to Pro (Demo)";
+}
+
+// ---------------- Paywall + trial recap ----------------
+
+function openPaywall(context, featureName) {
+  const m = document.getElementById("paywall");
+  if (!m) return;
+  m.hidden = false;
+  const headline = document.getElementById("paywall-headline");
+  const sub = document.getElementById("paywall-sub");
+  if (context === "feature" && featureName) {
+    headline.textContent = `Unlock ${featureName}`;
+    sub.textContent = "Three ways to get Pro — pick what works.";
+  } else if (context === "referral") {
+    headline.textContent = "Get Pro free";
+    sub.textContent = "Sign up for an app you don't drive yet through Peakr — Pro is on us.";
+  } else {
+    headline.textContent = "Get the full Peakr";
+    sub.textContent = "Pick the path that works for you.";
+  }
+  // Trial card disabled if already used.
+  const trialBtn = document.getElementById("trial-start");
+  if (trialBtn) {
+    if (state.trialStartedAt) {
+      trialBtn.disabled = true;
+      trialBtn.textContent = "Trial already used";
+    } else {
+      trialBtn.disabled = false;
+      trialBtn.textContent = "Start free trial";
+    }
+  }
+}
+
+function closePaywall() {
+  const m = document.getElementById("paywall");
+  if (m) m.hidden = true;
+}
+
+function startTrial() {
+  if (state.trialStartedAt) return;       // one-shot
+  state.trialStartedAt = new Date().toISOString();
+  state.tier = "trial";
+  state.trialRecapDismissed = false;
+  closePaywall();
+  renderAll();
+}
+
+function upgradePro() {
+  // Real Stripe Checkout goes here. Demo: flip to Pro locally.
+  state.tier = "pro";
+  state.proSource = "paid";
+  closePaywall();
+  renderAll();
+}
+
+function claimReferralPro() {
+  // In production the affiliate postback flips this server-side after
+  // a sign-up converts. The bonus panel + paywall point users at that flow.
+  state.tier = "pro";
+  state.proSource = "referral";
+  closePaywall();
+  renderAll();
+}
+
+// Show the trial-end recap with the driver's real numbers + paths forward.
+function showRecap() {
+  const sessions = state.earningsLog.length;
+  const earned = state.earningsLog.reduce((s, e) => s + e.actualGross, 0);
+  const cal = state.calibrationFactor;
+  // Projected weekly take-home from the currently-optimized schedule.
+  const grid = buildWeeklyHeatmap();
+  const slots = buildSlots(grid);
+  const chosen = selectByHours(slots, state.hoursPerWeek);
+  const projected = chosen.reduce((s, x) => s + x.est.net, 0);
+
+  document.getElementById("recap-sessions").textContent = sessions;
+  document.getElementById("recap-earned").textContent = fmt(earned);
+  document.getElementById("recap-calibration").textContent = `×${cal.toFixed(2)}`;
+  document.getElementById("recap-projected").textContent = fmt(projected);
+
+  const msg = sessions >= 3
+    ? `Peakr's model has calibrated to your earnings — every estimate now uses your real numbers.`
+    : `Log a few more sessions and Peakr's model will calibrate to your actual earnings.`;
+  document.getElementById("recap-cta-msg").textContent = msg;
+
+  document.getElementById("recap").hidden = false;
+}
+
+function closeRecap(action) {
+  state.trialRecapDismissed = true;
+  document.getElementById("recap").hidden = true;
+  if (action === "upgrade") {
+    openPaywall();
+  } else if (action === "referral") {
+    openPaywall("referral");
+  } else {
+    state.tier = "free";
+  }
+  renderAll();
 }
 
 let currentShifts = [];
@@ -638,6 +781,9 @@ function serializeState() {
     earningsLog: state.earningsLog,
     expenses: state.expenses,
     tier: state.tier,
+    proSource: state.proSource,
+    trialStartedAt: state.trialStartedAt,
+    trialRecapDismissed: state.trialRecapDismissed,
   };
 }
 
@@ -667,7 +813,10 @@ function hydrateState(s) {
   if (Array.isArray(s.expenses)) {
     state.expenses = s.expenses.filter(x => x && typeof x.amount === "number" && x.date && x.category);
   }
-  if (s.tier) state.tier = s.tier;
+  if (s.tier === "free" || s.tier === "trial" || s.tier === "pro") state.tier = s.tier;
+  if (s.proSource === "paid" || s.proSource === "referral") state.proSource = s.proSource;
+  if (typeof s.trialStartedAt === "string") state.trialStartedAt = s.trialStartedAt;
+  if (typeof s.trialRecapDismissed === "boolean") state.trialRecapDismissed = s.trialRecapDismissed;
   recomputeCalibration();
 }
 
@@ -1375,6 +1524,10 @@ function wireControls() {
   });
   document.querySelectorAll("#plan-mode .seg-btn").forEach(btn => {
     btn.addEventListener("click", () => {
+      if (btn.dataset.mode === "goal" && !isPro()) {
+        openPaywall("feature", "Income goal planner");
+        return;
+      }
       state.planMode = btn.dataset.mode;
       applyPlanMode();
       renderAll();
@@ -1431,8 +1584,14 @@ function wireControls() {
     state.incomeTaxRate = parseFloat(e.target.value); renderAll();
   });
 
-  document.getElementById("export-csv").addEventListener("click", exportCSV);
-  document.getElementById("export-ics").addEventListener("click", exportICS);
+  document.getElementById("export-csv").addEventListener("click", () => {
+    if (!isPro()) { openPaywall("feature", "Schedule export"); return; }
+    exportCSV();
+  });
+  document.getElementById("export-ics").addEventListener("click", () => {
+    if (!isPro()) { openPaywall("feature", "Schedule export"); return; }
+    exportICS();
+  });
 
   document.getElementById("log-add").addEventListener("click", () => {
     const date = document.getElementById("log-date").value;
@@ -1492,12 +1651,39 @@ function wireControls() {
       : "Couldn't read that — try entering it manually below.";
   });
 
-  document.getElementById("alerts-toggle").addEventListener("click", toggleSurgeAlerts);
+  document.getElementById("alerts-toggle").addEventListener("click", () => {
+    if (!isPro()) { openPaywall("feature", "Surge alerts"); return; }
+    toggleSurgeAlerts();
+  });
 
   document.getElementById("intro-dismiss").addEventListener("click", () => {
     document.getElementById("intro").style.display = "none";
     try { localStorage.setItem(INTRO_KEY, "1"); } catch (e) { /* ignore */ }
   });
+
+  // --- Plans / paywall / trial recap ---
+  const plansBtn = document.getElementById("plans-btn");
+  if (plansBtn) plansBtn.addEventListener("click", () => openPaywall());
+  const paywallClose = document.getElementById("paywall-close");
+  if (paywallClose) paywallClose.addEventListener("click", closePaywall);
+  const paywall = document.getElementById("paywall");
+  if (paywall) paywall.addEventListener("click", e => { if (e.target === paywall) closePaywall(); });
+  const trialBtn = document.getElementById("trial-start");
+  if (trialBtn) trialBtn.addEventListener("click", startTrial);
+  const proBuy = document.getElementById("pro-buy");
+  if (proBuy) proBuy.addEventListener("click", upgradePro);
+  const refShow = document.getElementById("referral-show");
+  if (refShow) refShow.addEventListener("click", () => {
+    closePaywall();
+    const panel = document.getElementById("bonus-panel");
+    if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  const rc = document.getElementById("recap-continue-free");
+  if (rc) rc.addEventListener("click", () => closeRecap("free"));
+  const ru = document.getElementById("recap-upgrade");
+  if (ru) ru.addEventListener("click", () => closeRecap("upgrade"));
+  const rr = document.getElementById("recap-referral");
+  if (rr) rr.addEventListener("click", () => closeRecap("referral"));
 
   document.getElementById("tier-toggle").addEventListener("click", () => {
     state.tier = state.tier === "pro" ? "free" : "pro"; renderAll();
@@ -1649,10 +1835,24 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("hours-val").textContent = state.hoursPerWeek + " hrs/week";
   wireAccount();
   renderAll();
+  // If the trial just expired and we haven't shown the recap yet, surface it.
+  if (state.tier === "trial" && trialDaysLeft() === 0 && !state.trialRecapDismissed) {
+    showRecap();
+  }
   loadForecast();
   syncMarketModel();
   initAccount();
 });
+
+// Dev/test helper: programmatically set the tier without going through the
+// paywall UI. Used by automated tests; harmless in production.
+window.__setTier = function (t) {
+  if (t === "pro" || t === "trial" || t === "free") {
+    state.tier = t;
+    if (t === "trial" && !state.trialStartedAt) state.trialStartedAt = new Date().toISOString();
+    renderAll();
+  }
+};
 
 // Register the service worker so Peakr is installable and works offline.
 if ("serviceWorker" in navigator) {
