@@ -58,12 +58,26 @@ supabase functions deploy scan-surges
 
 ## 3. Monetization wiring
 
+**Affiliate / referral side**
 - Replace the example rows in `referrals` (seeded by `0001_init.sql`) with your
   real affiliate links: `update referrals set url = '...' where platform = '...';`
 - In each affiliate network, set the **conversion postback** to:
   `POST https://<PROJECT_REF>.functions.supabase.co/api/referrals/postback`
   with header `x-postback-secret: <REFERRAL_POSTBACK_SECRET>` and body
   `{ "subid": "<their macro for our subid>", "payout_cents": <amount> }`.
+
+**Stripe (paid Pro tier — $9/mo)**
+1. In the Stripe Dashboard: create a recurring **$9/mo Product** and copy the
+   Price ID (`price_...`). Grab your secret key (`sk_live_...`).
+2. Set the secrets: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`.
+3. Add a webhook endpoint pointing at
+   `https://<PROJECT_REF>.functions.supabase.co/api/billing/webhook`. Subscribe
+   to `checkout.session.completed`, `customer.subscription.created/updated/deleted`.
+   Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
+4. That's it. `POST /api/billing/checkout` mints a Checkout Session; the webhook
+   flips `drivers.tier` to `pro`; `GET /api/me` returns the new tier so the
+   client picks it up next load. `/api/billing/portal` opens the Customer Portal
+   for "Manage plan."
 
 ## 4. Front end — go live
 

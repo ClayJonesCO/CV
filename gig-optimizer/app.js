@@ -652,12 +652,27 @@ function startTrial() {
   renderAll();
 }
 
-function upgradePro() {
-  // Real Stripe Checkout goes here. Demo: flip to Pro locally.
+async function upgradePro() {
+  // Live path: open Stripe Checkout. The webhook flips drivers.tier server-side;
+  // when the user returns we pick it up via /me.
+  if (API && API.enabled()) {
+    const res = await API.startCheckout();
+    if (res && res.url) { location.href = res.url; return; }
+    // Backend reachable but billing not configured / errored — fall through.
+  }
+  // Demo path (no backend): flip locally so the flow is visible.
   state.tier = "pro";
   state.proSource = "paid";
   closePaywall();
   renderAll();
+}
+
+async function manageBilling() {
+  if (API && API.enabled() && state.proSource === "paid") {
+    const res = await API.openBillingPortal();
+    if (res && res.url) { location.href = res.url; return; }
+  }
+  openPaywall();   // free or referral-Pro: show plans
 }
 
 function claimReferralPro() {
@@ -1235,9 +1250,36 @@ async function initAccount() {
   document.getElementById("account").style.display = "";
   await API.ensureToken();
   const who = await API.me();
-  if (who && who.email) {
-    showSignedIn(who.email);
-    await pullAndMerge();          // hydrate this device from the account
+  if (who) {
+    // Server is source of truth for the subscription tier when the backend is on.
+    if (who.tier === "pro" || who.tier === "free") {
+      state.tier = who.tier;
+      state.proSource = who.proSource || null;
+    }
+    if (who.email) {
+      showSignedIn(who.email);
+      await pullAndMerge();
+    }
+    renderAll();
+  }
+  handleCheckoutReturn();
+}
+
+// After Stripe redirects back, surface a confirmation and clean the URL.
+function handleCheckoutReturn() {
+  const params = new URLSearchParams(location.search);
+  const result = params.get("upgrade");
+  if (result !== "success" && result !== "cancel") return;
+  params.delete("upgrade");
+  const q = params.toString();
+  history.replaceState(null, "", location.pathname + (q ? "?" + q : "") + location.hash);
+  if (result === "success") {
+    const msg = document.createElement("div");
+    msg.className = "plan-status ok";
+    msg.style.cssText = "position:fixed;top:80px;right:24px;z-index:300;max-width:280px";
+    msg.textContent = "🎉 Welcome to Peakr Pro — your subscription is active.";
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 6000);
   }
 }
 
@@ -1663,7 +1705,11 @@ function wireControls() {
 
   // --- Plans / paywall / trial recap ---
   const plansBtn = document.getElementById("plans-btn");
-  if (plansBtn) plansBtn.addEventListener("click", () => openPaywall());
+  if (plansBtn) plansBtn.addEventListener("click", () => {
+    // Pro paid → Stripe Customer Portal; otherwise show the plans paywall.
+    if (effectiveTier() === "pro" && state.proSource === "paid") manageBilling();
+    else openPaywall();
+  });
   const paywallClose = document.getElementById("paywall-close");
   if (paywallClose) paywallClose.addEventListener("click", closePaywall);
   const paywall = document.getElementById("paywall");

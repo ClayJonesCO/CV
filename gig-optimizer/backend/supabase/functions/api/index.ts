@@ -14,10 +14,65 @@
 //   POST   /api/push/subscribe                                  [auth]
 //   DELETE /api/push/subscribe                                  [auth]
 
-import { admin, CORS, json, driverFromToken, sha256hex } from "../_shared/util.ts";
+import { admin, CORS, json, driverFromToken, sha256hex, verifyStripeSig } from "../_shared/util.ts";
 import { getForecast, getEvents } from "../_shared/feeds.ts";
 
 const db = admin();
+
+// Stripe REST helper — Basic auth, form-encoded. Keeps us off the npm: SDK.
+async function stripeCall(path: string, form: URLSearchParams) {
+  const key = Deno.env.get("STRIPE_SECRET_KEY");
+  if (!key) throw new Error("STRIPE_SECRET_KEY not set");
+  const r = await fetch(`https://api.stripe.com/v1${path}`, {
+    method: "POST",
+    headers: { "authorization": `Basic ${btoa(key + ":")}`, "content-type": "application/x-www-form-urlencoded" },
+    body: form,
+  });
+  return r;
+}
+
+// Apply a Stripe webhook event to drivers + billing_customers.
+async function handleStripeEvent(event: Record<string, any>) {
+  const obj = event.data?.object ?? {};
+  const type = event.type as string;
+  const promoteDriver = async (driver_id: string, source = "paid") =>
+    db.from("drivers").update({ tier: "pro", pro_source: source }).eq("id", driver_id);
+  const demoteDriver = async (driver_id: string) =>
+    db.from("drivers").update({ tier: "free", pro_source: null }).eq("id", driver_id);
+
+  if (type === "checkout.session.completed") {
+    const driver_id = obj.client_reference_id;
+    if (!driver_id) return;
+    await db.from("billing_customers").upsert({
+      driver_id,
+      stripe_customer_id: obj.customer,
+      stripe_subscription_id: obj.subscription,
+      status: "active",
+      updated_at: new Date().toISOString(),
+    });
+    await promoteDriver(driver_id, "paid");
+    return;
+  }
+  if (type === "customer.subscription.created" || type === "customer.subscription.updated") {
+    const sub = obj;
+    await db.from("billing_customers").update({
+      status: sub.status,
+      current_period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+      updated_at: new Date().toISOString(),
+    }).eq("stripe_subscription_id", sub.id);
+    const { data: bc } = await db.from("billing_customers").select("driver_id")
+      .eq("stripe_subscription_id", sub.id).maybeSingle();
+    if (!bc) return;
+    if (sub.status === "active" || sub.status === "trialing") await promoteDriver(bc.driver_id, "paid");
+    else if (sub.status === "canceled" || sub.status === "unpaid") await demoteDriver(bc.driver_id);
+    return;
+  }
+  if (type === "customer.subscription.deleted") {
+    const { data: bc } = await db.from("billing_customers").select("driver_id")
+      .eq("stripe_subscription_id", obj.id).maybeSingle();
+    if (bc) await demoteDriver(bc.driver_id);
+  }
+}
 
 function dollarsToCents(n: unknown): number {
   return Math.round(Number(n) * 100);
@@ -74,6 +129,22 @@ Deno.serve(async (req) => {
 
   // Affiliate conversion postback (called by the network when a driver signs up).
   // Authenticated by a shared secret, not a device token.
+  // Stripe webhook — signature-verified, so no device token required.
+  // MUST be before the device-token gate.
+  if (req.method === "POST" && path === "/billing/webhook") {
+    const raw = await req.text();
+    const ok = await verifyStripeSig(req.headers.get("stripe-signature"),
+      raw, Deno.env.get("STRIPE_WEBHOOK_SECRET"));
+    if (!ok) return json({ error: "bad signature" }, 400);
+    let event;
+    try { event = JSON.parse(raw); } catch (e) { return json({ error: "bad json" }, 400); }
+    try { await handleStripeEvent(event); } catch (e) {
+      console.error("stripe handler:", e);
+      return json({ error: "handler error" }, 500);
+    }
+    return json({ received: true });
+  }
+
   if (req.method === "POST" && path === "/referrals/postback") {
     if (req.headers.get("x-postback-secret") !== Deno.env.get("REFERRAL_POSTBACK_SECRET")) {
       return json({ error: "forbidden" }, 403);
@@ -130,10 +201,52 @@ Deno.serve(async (req) => {
     return json({ url: `${ref.url}${sep}subid=${click.subid}` }, 201);
   }
 
-  // Who am I (for showing signed-in state across devices)?
+  // Who am I (for showing signed-in state + subscription tier across devices)?
   if (req.method === "GET" && path === "/me") {
-    const { data } = await db.from("drivers").select("id,email").eq("id", driver_id).maybeSingle();
-    return json({ driver_id, email: data?.email ?? null });
+    const { data } = await db.from("drivers").select("id,email,tier,pro_source").eq("id", driver_id).maybeSingle();
+    return json({
+      driver_id, email: data?.email ?? null,
+      tier: data?.tier ?? "free", proSource: data?.pro_source ?? null,
+    });
+  }
+
+  // Create a Stripe Checkout Session for the $9/mo Pro subscription.
+  // Returns { url } for the client to redirect to.
+  if (req.method === "POST" && path === "/billing/checkout") {
+    const priceId = Deno.env.get("STRIPE_PRICE_ID");
+    if (!priceId || !Deno.env.get("STRIPE_SECRET_KEY")) {
+      return json({ error: "billing not configured" }, 503);
+    }
+    const { return_url } = (await req.json().catch(() => ({}))) as { return_url?: string };
+    const base = return_url || "https://peakr.app";
+    const form = new URLSearchParams();
+    form.set("mode", "subscription");
+    form.set("line_items[0][price]", priceId);
+    form.set("line_items[0][quantity]", "1");
+    form.set("client_reference_id", driver_id);
+    form.set("success_url", `${base}?upgrade=success`);
+    form.set("cancel_url", `${base}?upgrade=cancel`);
+    form.set("allow_promotion_codes", "true");
+    form.set("billing_address_collection", "auto");
+    const r = await stripeCall("/checkout/sessions", form);
+    if (!r.ok) return json({ error: "stripe error", details: await r.text() }, 502);
+    const sess = await r.json();
+    return json({ url: sess.url });
+  }
+
+  // Customer Portal — "Manage plan" for existing subscribers.
+  if (req.method === "POST" && path === "/billing/portal") {
+    const { data: bc } = await db.from("billing_customers")
+      .select("stripe_customer_id").eq("driver_id", driver_id).maybeSingle();
+    if (!bc?.stripe_customer_id) return json({ error: "no customer" }, 404);
+    const { return_url } = (await req.json().catch(() => ({}))) as { return_url?: string };
+    const form = new URLSearchParams();
+    form.set("customer", bc.stripe_customer_id);
+    form.set("return_url", return_url || "https://peakr.app");
+    const r = await stripeCall("/billing_portal/sessions", form);
+    if (!r.ok) return json({ error: "stripe error" }, 502);
+    const sess = await r.json();
+    return json({ url: sess.url });
   }
 
   // Email account: request a one-time code (Phase 3 cross-device sync).
