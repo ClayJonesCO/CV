@@ -67,17 +67,25 @@ supabase functions deploy scan-surges
   `{ "subid": "<their macro for our subid>", "payout_cents": <amount> }`.
 
 **Stripe (paid Pro tier — $9/mo)**
-1. In the Stripe Dashboard: create a recurring **$9/mo Product** and copy the
-   Price ID (`price_...`). Grab your secret key (`sk_live_...`).
-2. Set the secrets: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`.
-3. Add a webhook endpoint pointing at
-   `https://<PROJECT_REF>.functions.supabase.co/api/billing/webhook`. Subscribe
-   to `checkout.session.completed`, `customer.subscription.created/updated/deleted`.
-   Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
-4. That's it. `POST /api/billing/checkout` mints a Checkout Session; the webhook
-   flips `drivers.tier` to `pro`; `GET /api/me` returns the new tier so the
-   client picks it up next load. `/api/billing/portal` opens the Customer Portal
-   for "Manage plan."
+
+The fast path uses the helper script `backend/bin/setup-stripe.sh`, which
+creates the recurring product/price and the webhook endpoint in one shot:
+
+```bash
+STRIPE_SECRET_KEY=sk_live_xxx \
+WEBHOOK_URL=https://<PROJECT_REF>.functions.supabase.co/api/billing/webhook \
+bash gig-optimizer/backend/bin/setup-stripe.sh
+# Prints STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET; add them to Supabase secrets
+# and redeploy: supabase functions deploy api
+```
+
+Or do it by hand in the Dashboard:
+1. Create a recurring **$9/mo Product** → copy the Price ID.
+2. Add a Webhook Endpoint at
+   `https://<PROJECT_REF>.functions.supabase.co/api/billing/webhook`, subscribe
+   to `checkout.session.completed` + `customer.subscription.{created,updated,deleted}`,
+   copy the signing secret.
+3. `supabase secrets set STRIPE_SECRET_KEY=… STRIPE_PRICE_ID=… STRIPE_WEBHOOK_SECRET=…`
 
 ## 4. Front end — go live
 
@@ -96,15 +104,25 @@ worker + manifest make it installable over HTTPS.
 
 ## 5. Smoke test (live)
 
-- [ ] App loads with no console errors; footer/hero behave normally.
-- [ ] Network tab shows `GET /api/market-model` and `GET /api/forecast` 200s.
-- [ ] Log a session → `POST /api/sessions` 201; appears after a reload (synced).
-- [ ] "☁ Sync" → email code (or `dev_code`) → verify → log persists on another device.
-- [ ] Click a sign-up bonus → `POST /api/referrals/click` → opens a `?subid=…` URL.
-- [ ] Fire a test postback (curl) → conversion shows in the dashboard.
+Run the bundled curl-based suite — it exercises the full loop end-to-end
+including (optionally) a signed Stripe webhook:
+
+```bash
+API=https://<PROJECT_REF>.functions.supabase.co/api \
+ADMIN_KEY=... POSTBACK_SECRET=... \
+STRIPE_WEBHOOK_SECRET=whsec_xxx \
+bash gig-optimizer/backend/bin/smoke-test.sh
+```
+
+What it checks (in order): public market-model, anon token, `/me`, session
+ingest + readback, referral click + tracked subid, conversion postback, admin
+analytics, and the Stripe webhook flipping tier→`pro`. Exits non-zero with a
+clear message on the first failed step.
+
+Browser sanity beyond the script:
+- [ ] App loads with no console errors.
+- [ ] "☁ Sync" → email code (or `dev_code` in non-prod) → verify → log persists on another device.
 - [ ] `admin.html` + admin key → live KPIs load.
-- [ ] After `aggregate` runs (or invoke it once), `market-model` reflects real
-      sessions once a cell passes the k-anonymity threshold (K=5).
 
 ## 6. Rollback / disable
 
